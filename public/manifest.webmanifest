@@ -1,0 +1,19 @@
+{
+  "name": "Ops — Event Monitoring",
+  "short_name": "Ops",
+  "description": "Pemantauan event harian: opening, monitoring, closing.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1d4ed8",
+  "orientation": "portrait",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
