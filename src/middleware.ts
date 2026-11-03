@@ -13,10 +13,11 @@ export function middleware(request: NextRequest) {
   const hasSession = request.cookies.has("ops_session");
 
   if (!hasSession && !PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.search = "";
-    return NextResponse.redirect(url);
+    // Behind the production proxy Next's request URL contains its internal
+    // localhost listener. Redirect using the configured public application URL.
+    const origin = process.env.NODE_ENV === "production" ? process.env.APP_URL : request.nextUrl.origin;
+    if (!origin) return NextResponse.json({ error: "Application URL is not configured" }, { status: 503 });
+    return NextResponse.redirect(new URL("/login", origin));
   }
 
   return NextResponse.next();

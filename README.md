@@ -43,7 +43,7 @@ Untuk preview yang lebih ringan, gunakan build produksi lokal terpisah dari dev:
 
 ```bash
 NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next build
-NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next start -p 3112
+APP_URL=http://localhost:3112 PDF_RENDER_ORIGIN=http://127.0.0.1:3112 NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next start -p 3112
 # http://localhost:3112 — tidak menunggu kompilasi halaman seperti next dev.
 ```
 
