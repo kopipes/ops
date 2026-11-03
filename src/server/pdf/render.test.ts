@@ -89,6 +89,7 @@ vi.mock("playwright-core", () => {
         fakeState.maxActive = Math.max(fakeState.maxActive, fakeState.active);
         return {
           newContext: async () => ({
+            route: async () => {},
             newPage: async () => ({
               goto: async () => {
                 if (fakeState.failNext) {

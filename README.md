@@ -175,13 +175,26 @@ Di produksi, gunakan **Litestream** untuk replikasi kontinu ke S3-compatible sto
 
 ## Deploy (ringkas)
 
-VPS minimal 2 vCPU / 4 GB RAM / 80 GB SSD (§10), Docker Compose + Caddy.
+Panduan VPS yang dipakai: [`deploy/README.md`](deploy/README.md). Deployment
+native memakai service systemd khusus Ops, port loopback `4215`, dan vhost Nginx
+terpisah untuk `ops.provaliantgroup.com`. Kode diambil dari commit GitHub;
+setelah import pertama, database/uploads pada VPS menjadi sumber utama dan
+tidak boleh ditimpa data lokal saat update. Backup dan rollback tersedia.
+
+Runtime produksi dipatch ke Next.js 15.5.28 / React 19.0.9, Drizzle 0.45.2,
+Zod 4.6.6, dan PostCSS 8.5.23; dependency produksi lolos audit tanpa advisori
+pada persiapan deployment. `pnpm` dipin 12.8.1 dengan izin build native eksplisit.
 
 1. **Penting:** mount `uploads/` sebagai volume terpisah (§10.1) agar disk bisa di-upgrade tanpa migrasi.
 2. Jalankan `pnpm db:migrate` sebagai langkah rilis sebelum aplikasi start.
 3. Set `NODE_ENV=production` — cookie menjadi `Secure` (butuh HTTPS, disediakan Caddy).
 4. **Jangan** jalankan `db:seed` di produksi (membuat akun demo dengan password publik).
 5. Pantau disk: alert > 70% dan > 85% (§10.1). Pada volume default, VPS penuh ~2 bulan.
+
+Endpoint `/api/health` tersedia tanpa login dan memeriksa koneksi database.
+Untuk PDF produksi, set `PDF_RENDER_ORIGIN` ke origin loopback port aplikasi;
+request PDF hanya mengirim cookie sesi Ops ke origin tersebut, dan menolak
+subresource/redirect ke origin lain.
 
 ## Master data (M2)
 

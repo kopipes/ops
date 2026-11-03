@@ -13,6 +13,7 @@
  *   /dev/shm only 64 MB, which crashes Chromium mid-render.
  */
 import { chromium, type Browser } from "playwright-core";
+import { pdfRequestHandler } from "./requests";
 
 export const PDF_TIMEOUT_MS = 120_000;
 export const MAX_DAILY_DAYS = 1;
@@ -116,11 +117,12 @@ export async function renderPdf(printUrl: string, options: RenderOptions = {}): 
         // Print geometry: A4 portrait with a sensible margin.
         viewport: { width: 1200, height: 1600 },
         deviceScaleFactor: 1,
-        // Same session as the user who asked for the export.
-        ...(options.cookie ? { extraHTTPHeaders: { cookie: options.cookie } } : {}),
+        serviceWorkers: "block",
       });
 
       try {
+        // Context-wide Cookie headers would leak to external subresources.
+        await context.route("**/*", pdfRequestHandler(new URL(printUrl).origin, options.cookie));
         const page = await context.newPage();
         const response = await page.goto(printUrl, {
           waitUntil: "networkidle",

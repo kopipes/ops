@@ -22,6 +22,7 @@ import { canExportPdf } from "@/server/permissions";
 import { loadFacts } from "@/server/services/projects";
 import { dateRange } from "@/lib/datetime";
 import { MAX_RECAP_DAYS, PdfTimeoutError, renderPdf } from "@/server/pdf/render";
+import { pdfOrigin } from "@/server/pdf/origin";
 
 export interface ExportResult {
   ok?: boolean;
@@ -29,12 +30,6 @@ export interface ExportResult {
   /** Base64 payload; the browser turns it into a download. */
   filename?: string;
   dataUrl?: string;
-}
-
-function originFrom(h: Awaited<ReturnType<typeof headers>>): string {
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
-  return `${proto}://${host}`;
 }
 
 export async function exportDailyPdfAction(
@@ -60,7 +55,7 @@ export async function exportDailyPdfAction(
   if (!project) return { error: "Project tidak ditemukan" };
 
   const jar = await headers();
-  const origin = originFrom(jar);
+  const origin = pdfOrigin(jar);
   const cookie = jar.get("cookie") ?? "";
   const qs = new URLSearchParams({
     photos: includePhotos ? "1" : "0",
@@ -111,7 +106,7 @@ export async function exportProjectPdfAction(
   }
 
   const jar = await headers();
-  const origin = originFrom(jar);
+  const origin = pdfOrigin(jar);
   const cookie = jar.get("cookie") ?? "";
   const qs = new URLSearchParams({
     from,

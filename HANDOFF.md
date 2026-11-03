@@ -391,6 +391,35 @@ were addressed and checked. Production preview remains on :3112.
 
 ---
 
+### 3.11 Safe VPS deployment preparation — 3 Nov 2026
+
+- User authorized `ssh cloudeka48` deployment, GitHub as code SOT and VPS as DB
+  SOT after one local import. Correct domain confirmed: ops.provaliantgroup.com.
+  User chose four distinct random demo passwords, with Bob unchanged. Imported
+  local sessions are revoked and demo accounts must change password on login.
+- Shared-host audit: native Nginx/systemd, Node22/pnpm12, no prior Ops service,
+  new loopback4215 reserved. Dedicated ops user/paths plus full config/baseline
+  backup at `/var/backups/ops-bootstrap/20261103T145236Z`. Existing services/PIDs
+  and six HTTPS site statuses recorded before changes. No shared DB/port changes.
+- Before internet exposure, patch Next15.5.28/React19.0.9, Drizzle0.45.2,
+  Zod4.6.6 and PostCSS8.5.23. Zod optional text transforms retain previous
+  omission semantics. Fix pnpm12 build policy and pin package manager12.8.1.
+  Production dependency audit: zero advisories. Scope file tracing to the release.
+- `deploy/` contains isolated unit/vhost/ACME templates, first-import initializer,
+  compensating rollback and Linux-only mocked rollback harness. DB/uploads are
+  persistent outside release; migrations explicit with backup, never ExecStart.
+  Root-only password file/marker are exclusive; subsequent init is refused.
+- PDF production origin fails closed to actual listener's http://127.0.0.1:PORT.
+  Chromium blocks external subresources/redirects and forwards only ops_session
+  on approved-origin requests; no global Cookie header or service workers.
+- Validation before activation: **387** unit/integration tests, **11** scoped
+  browser tests, production build/typecheck, production audit clean. Linux
+  rollback simulation passes success, failed-health compensation and interrupted
+  initial stop. Runtime loopback/TLS/photo/PDF/baseline checks follow GitHub push;
+  live status is recorded on the VPS, not inferred from this preparation note.
+
+---
+
 ## 4. Architectural rules — do not violate
 
 These were established deliberately and are enforced by tests. Breaking them re-introduces bugs already fixed.

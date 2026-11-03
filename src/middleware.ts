@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/register", "/sw.js", "/offline.html"];
+const PUBLIC_PATHS = ["/login", "/register", "/sw.js", "/offline.html", "/api/health"];
 
 /**
  * Coarse gate only: bounces obviously-unauthenticated requests to /login.

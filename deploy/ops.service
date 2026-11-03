@@ -1,0 +1,41 @@
+# managed-by-ops: isolated service, not a replacement for any existing app.
+[Unit]
+Description=Ops event monitoring
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ops
+Group=ops
+WorkingDirectory=/opt/ops/current
+EnvironmentFile=/etc/ops/ops.env
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node /opt/ops/current/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 4215
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/ops/data /var/lib/ops/uploads /var/cache/ops
+TasksMax=512
+MemoryHigh=1536M
+MemoryMax=2G
+CPUQuota=150%
+Nice=5
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=multi-user.target

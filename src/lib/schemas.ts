@@ -36,8 +36,8 @@ export const checklistItemInputSchema = z.object({
     .string()
     .trim()
     .max(500, "Deskripsi maksimal 500 karakter")
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
   phase: phaseSchema,
   categoryId: z.string().min(1, "Kategori wajib dipilih"),
   /**
@@ -90,8 +90,8 @@ export const templateInputSchema = z.object({
     .string()
     .trim()
     .max(500, "Deskripsi maksimal 500 karakter")
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
   divisionId: z
     .string()
     .trim()
@@ -113,8 +113,8 @@ export const templateFromProjectSchema = z.object({
     .string()
     .trim()
     .max(500)
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
 });
 export type TemplateFromProjectInput = z.infer<typeof templateFromProjectSchema>;
 
@@ -154,21 +154,21 @@ export const projectInputSchema = z
       .string()
       .trim()
       .max(120)
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     venue: trimmed(2, 120, "Venue wajib diisi"),
     address: z
       .string()
       .trim()
       .max(300)
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     description: z
       .string()
       .trim()
       .max(1000)
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     startDate: z.string().regex(DATE_RE, "Tanggal mulai tidak valid"),
     endDate: z.string().regex(DATE_RE, "Tanggal selesai tidak valid"),
     timezone: z.string().min(1, "Timezone wajib diisi"),
@@ -248,8 +248,8 @@ export const setStatusSchema = z.object({
     .string()
     .trim()
     .max(300)
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
 });
 
 export const setMemberRoleSchema = z.object({
@@ -303,8 +303,8 @@ export const issueInputSchema = z
       .string()
       .trim()
       .max(1000, "Deskripsi maksimal 1000 karakter")
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     categoryId: z.string().min(1, "Kategori wajib dipilih"),
     severity: severitySchema.default("medium"),
     /** §4.7: "Next step / action plan" is required. */
@@ -319,8 +319,8 @@ export const issueInputSchema = z
       .string()
       .trim()
       .max(120)
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     dueAt: z
       .string()
       .trim()
@@ -378,8 +378,8 @@ export const issueStatusChangeSchema = z.object({
     .string()
     .trim()
     .max(1000)
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
 });
 
 export const issueCommentSchema = z.object({
