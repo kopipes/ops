@@ -6,7 +6,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { today, waitForHydration } from "./helpers";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
 
 test.use({ viewport: { width: 390, height: 900 } });
@@ -131,11 +131,15 @@ test("admin can deactivate a user and their session dies (§14 AC)", async ({ pa
   await ctx.close();
 });
 
-test("manager cannot open admin pages (§2.3)", async ({ page }) => {
+test("manager can manage crew but not the admin-only surfaces (§2.3)", async ({ page }) => {
   await loginOk(page, "manager@ops.test");
-  await page.goto(`${BASE}/admin/users`);
-  await expect(page.getByText(/hanya untuk Admin/)).toBeVisible();
 
+  // Managers may reach user management, scoped to crew in their own division.
+  await page.goto(`${BASE}/admin/users`);
+  await expect(page.getByText(/Kelola crew dengan divisi utama di divisi Anda/)).toBeVisible();
+  await expect(page.getByText(/hanya untuk Admin/)).toHaveCount(0);
+
+  // Admin-only surfaces stay closed.
   await page.goto(`${BASE}/admin/audit`);
   await expect(page.getByText(/hanya untuk Admin/)).toBeVisible();
 
@@ -168,12 +172,17 @@ test("admin settings persist and feed the project wizard defaults", async ({ pag
   await loginOk(page, "admin@ops.test");
   await page.goto(`${BASE}/admin/settings`);
 
+  const openingWasEnabled = await page.getByLabel("Gunakan window opening", { exact: true }).isChecked();
+  const openingStartBefore = await page.locator('input[name="defaultOpeningWindowStart"]').inputValue();
+  await page.getByLabel("Gunakan window opening", { exact: true }).check();
   await page.getByLabel("Mulai").first().fill("05:30");
   await page.getByRole("button", { name: "Simpan setelan" }).click();
   await expect(page.getByText("Setelan tersimpan.")).toBeVisible();
 
   // The wizard's step 5 should now default to the stored value.
   await page.goto(`${BASE}/projects/new`);
+  await page.getByLabel("Nama project").fill("Window defaults preview");
+  await page.getByLabel("Venue", { exact: true }).fill("JCC");
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await page.getByRole("button", { name: "Lanjut →" }).click();
@@ -181,10 +190,15 @@ test("admin settings persist and feed the project wizard defaults", async ({ pag
   await expect(page.getByLabel("Opening mulai")).toHaveValue("05:30");
 
   // Restore the global default. These settings are shared by every project, so
-  // leaving 05:30 behind makes other spec files (which assert the 06:00 default)
-  // pass or fail depending on execution order.
+  // leaving the window enabled makes other spec files (which assert the
+  // disabled-by-default state) pass or fail depending on execution order.
+  // Restore the value AND the checkbox in one submit: saving them in two steps
+  // left the window enabled when the second submit was skipped.
   await page.goto(`${BASE}/admin/settings`);
-  await page.getByLabel("Mulai").first().fill("06:00");
+  const openingToggle = page.getByLabel("Gunakan window opening", { exact: true });
+  if (openingWasEnabled) await openingToggle.check();
+  else await openingToggle.uncheck();
+  await page.getByLabel("Mulai").first().fill(openingStartBefore);
   await page.getByRole("button", { name: "Simpan setelan" }).click();
   await expect(page.getByText("Setelan tersimpan.")).toBeVisible();
 });

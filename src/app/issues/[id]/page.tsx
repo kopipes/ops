@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhotoGallery } from "@/components/reports/PhotoGallery";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
@@ -131,18 +132,7 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
           <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
             Foto ({photos.length})
           </h2>
-          <div className="flex flex-wrap gap-1">
-            {photos.map((p) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={p.id}
-                src={`/api/photos/${p.id}?v=thumb`}
-                alt="Foto issue"
-                className="h-20 w-20 rounded object-cover"
-                loading="lazy"
-              />
-            ))}
-          </div>
+          <PhotoGallery photos={photos.map((photo, index) => ({ id: photo.id, label: `Foto issue ${index + 1}`, caption: issue.title }))} />
         </section>
       ) : null}
 
@@ -189,20 +179,7 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
                 </p>
               ) : null}
 
-              {t.photos.length > 0 ? (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {t.photos.map((p) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={p.id}
-                      src={`/api/photos/${p.id}?v=thumb`}
-                      alt="Foto update"
-                      className="h-14 w-14 rounded object-cover"
-                      loading="lazy"
-                    />
-                  ))}
-                </div>
-              ) : null}
+              <PhotoGallery small photos={t.photos.map((photo, index) => ({ id: photo.id, label: `Foto update ${index + 1}`, caption: t.note ?? undefined }))} />
             </li>
           ))}
         </ol>

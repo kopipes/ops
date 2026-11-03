@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/server/db/schema";
 import type { ActingUser } from "@/server/permissions";
 import {
@@ -143,7 +143,10 @@ beforeEach(async () => {
   openingItemIds = setup.items;
 });
 
-afterEach(() => sqlite.close());
+afterEach(() => {
+  sqlite.close();
+  vi.restoreAllMocks();
+});
 
 describe("markDayReviewed (§7.2 no.7)", () => {
   it("sets reviewed_at/reviewed_by and audits it", async () => {
@@ -204,6 +207,10 @@ describe("unmarkDayReviewed (§13.1, Q14)", () => {
 });
 
 describe("review locks the report edit window (§13.1)", () => {
+  beforeEach(() => {
+    // Fixture day is Nov 2; keep the clock inside its H+1 edit window.
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-03T04:00:00Z"));
+  });
   it("a day becomes non-editable once reviewed", async () => {
     expect(await isDayEditable(db, dayIds[0])).toBe(true);
     await markDayReviewed(db, mgr, dayIds[0]);
@@ -213,10 +220,11 @@ describe("review locks the report edit window (§13.1)", () => {
   it("un-reviewing reopens editing (before H+1 12:00)", async () => {
     await markDayReviewed(db, mgr, dayIds[0]);
     await unmarkDayReviewed(db, mgr, dayIds[0], "koreksi");
-    // Day is in 2026; relative to real "now" the H+1 deadline may already differ,
-    // so assert only that the review flag no longer forces it closed.
     const day = await db.select().from(schema.projectDays).where(eq(schema.projectDays.id, dayIds[0])).get();
     expect(day?.reviewedAt).toBeNull();
+    expect(await isDayEditable(db, dayIds[0])).toBe(true);
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-11-03T05:00:00Z"));
+    expect(await isDayEditable(db, dayIds[0])).toBe(false);
   });
 });
 
@@ -305,6 +313,19 @@ describe("getDailySummary (§7.1)", () => {
     expect(await getDailySummary(db, [projectId], { from: "2026-11-03", to: "2026-11-02" })).toEqual([]);
   });
 
+  it("keeps issue counts and critical filters scoped to each project", async () => {
+    const other = await setupProject("EVT-2026-0002");
+    await db.insert(schema.issueCategories).values({ id: "c1", name: "Teknis", sortOrder: 1, isActive: true, createdAt: now, updatedAt: now });
+    await db.insert(schema.issues).values({ id: "i1", code: "ISSUE-1", projectId, projectDayId: dayIds[0], title: "Critical on first project", categoryId: "c1", severity: "critical", status: "open", nextStep: "Perbaiki", createdBy: "u-lead", authorName: "Budi", authorRole: "user", createdAt: now, updatedAt: now });
+    const rows = await getDailySummary(db, [projectId, other.projectId], { from: "2026-11-02", to: "2026-11-03" });
+    expect(rows).toHaveLength(4);
+    expect(rows.filter(r => r.projectId === projectId).every(r => r.issuesOpen === 1 && r.hasCriticalOpen)).toBe(true);
+    expect(rows.filter(r => r.projectId === other.projectId).every(r => r.issuesOpen === 0 && !r.hasCriticalOpen)).toBe(true);
+    const critical = await getDailySummary(db, [projectId, other.projectId], { from: "2026-11-02", to: "2026-11-03", status: "critical" });
+    expect(critical).toHaveLength(2);
+    expect(critical.every(r => r.projectId === projectId)).toBe(true);
+  });
+
   it("flags rows with critical/high open issues", async () => {
     await db.insert(schema.issueCategories).values({ id: "c1", name: "Teknis", sortOrder: 1, isActive: true, createdAt: now, updatedAt: now });
     await db.insert(schema.issues).values({
@@ -336,6 +357,14 @@ describe("getDailySummary (§7.1)", () => {
 });
 
 describe("getDayDetail (§7.2)", () => {
+  it("hides historical lateness with windows disabled without rewriting stored flags", async () => {
+    await db.update(schema.reports).set({ isLate: true }).where(eq(schema.reports.projectId, projectId));
+    const detail = await getDayDetail(db, lead, projectId, "2026-11-02");
+    expect(detail?.opening?.isLate).toBe(false);
+    const stored = await db.select().from(schema.reports).where(eq(schema.reports.projectId, projectId));
+    expect(stored[0].isLate).toBe(true);
+  });
+
   beforeEach(async () => {
     await submitReport(db, sqlite, lead, openingInput(dayIds[0], [
       { id: openingItemIds[0], result: "ok" },
@@ -413,6 +442,7 @@ describe("getDashboard (§7.3)", () => {
     expect(dash.openIssuesBySeverity.critical).toBe(1);
     expect(dash.openIssuesBySeverity.low).toBe(0); // closed excluded
     expect(dash.needsAttention.some((n) => n.kind === "critical_open")).toBe(true);
+    expect(dash.needsAttention.find(n => n.kind === "critical_open")).toMatchObject({ issueId: "i1", issueStatus: "open" });
   });
 
   it("counts unreviewed days", async () => {

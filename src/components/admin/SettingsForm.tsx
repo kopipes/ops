@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import type { SettingsActionState } from "@/app/settings-actions";
 import type { GlobalSettings } from "@/server/services/app-settings";
 
@@ -19,10 +19,23 @@ export function SettingsForm({
   initial: GlobalSettings;
 }) {
   const [state, formAction, pending] = useActionState(action, {} as SettingsActionState);
+  const [openingEnabled, setOpeningEnabled] = useState(initial.openingWindowEnabled);
+  const [closingEnabled, setClosingEnabled] = useState(initial.closingWindowEnabled);
 
   return (
-    <form action={formAction} className="flex flex-col gap-3">
-      <fieldset className="flex flex-col gap-2">
+    // Submit this settings editor explicitly: React's automatic action-form
+    // reset restores old checkbox/time defaults after the values are saved.
+    <form action={formAction} onSubmit={event => {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      startTransition(() => formAction(formData));
+    }} className="flex flex-col gap-3">
+      <label className="flex min-h-tap items-center gap-3 text-sm">
+        <input type="checkbox" name="openingWindowEnabled" checked={openingEnabled} onChange={e => setOpeningEnabled(e.target.checked)} className="h-5 w-5" />
+        Gunakan window opening
+      </label>
+      {!openingEnabled ? <p className="text-xs" style={{ color: "var(--muted)" }}>Opening bebas jam. Waktu pengisian tetap dicatat otomatis.</p> : null}
+      <fieldset disabled={!openingEnabled} hidden={!openingEnabled} className={openingEnabled ? "flex flex-col gap-2" : "hidden"}>
         <legend className="text-sm font-medium" style={{ color: "var(--muted)" }}>
           Window opening default
         </legend>
@@ -50,7 +63,12 @@ export function SettingsForm({
         </div>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2">
+      <label className="flex min-h-tap items-center gap-3 text-sm">
+        <input type="checkbox" name="closingWindowEnabled" checked={closingEnabled} onChange={e => setClosingEnabled(e.target.checked)} className="h-5 w-5" />
+        Gunakan window closing
+      </label>
+      {!closingEnabled ? <p className="text-xs" style={{ color: "var(--muted)" }}>Closing bebas jam. Waktu pengisian tetap dicatat otomatis.</p> : null}
+      <fieldset disabled={!closingEnabled} hidden={!closingEnabled} className={closingEnabled ? "flex flex-col gap-2" : "hidden"}>
         <legend className="text-sm font-medium" style={{ color: "var(--muted)" }}>
           Window closing default
         </legend>

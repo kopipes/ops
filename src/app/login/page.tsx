@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { AuthForm, Field } from "@/components/AuthForm";
 import { loginAction } from "@/app/auth-actions";
 import { currentSession } from "@/server/auth/current-user";
@@ -8,12 +9,12 @@ export const metadata = { title: "Masuk — Ops" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ changed?: string }>;
+  searchParams: Promise<{ changed?: string; registered?: string }>;
 }) {
   const session = await currentSession();
   if (session) redirect("/");
 
-  const { changed } = await searchParams;
+  const { changed, registered } = await searchParams;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-5">
@@ -40,6 +41,7 @@ export default async function LoginPage({
           Password berhasil diubah. Silakan masuk kembali.
         </p>
       ) : null}
+      {registered ? <p role="status" className="mb-4 rounded-lg border px-3 py-3 text-sm" style={{ borderColor: "var(--border)", color: "var(--fg)" }}>Permintaan pendaftaran diterima. Akun baru belum aktif. Hubungi Admin atau Manager divisi Anda untuk aktivasi sebelum masuk.</p> : null}
 
       <AuthForm action={loginAction} submitLabel="Masuk">
         <Field label="Email" name="email" type="email" autoComplete="username" inputMode="email" />
@@ -50,6 +52,8 @@ export default async function LoginPage({
           autoComplete="current-password"
         />
       </AuthForm>
+
+      <p className="mt-5 text-center text-sm" style={{ color: "var(--muted)" }}>Belum punya akun? <Link href="/register" className="font-medium underline underline-offset-2" style={{ color: "var(--accent)" }}>Daftar</Link></p>
 
       <p className="mt-6 text-center text-xs" style={{ color: "var(--muted)" }}>
         Lupa password? Hubungi Admin untuk reset.

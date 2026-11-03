@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { requireUser } from "@/server/auth/current-user";
 import { logoutAction } from "@/app/auth-actions";
@@ -18,7 +19,7 @@ export default async function AccountPage() {
           .where(inArray(divisions.id, session.user.divisionIds));
 
   return (
-    <AppShell>
+    <AppShell contentWidth="form">
       <h1 className="mb-4 text-xl font-semibold">Akun</h1>
 
       <dl
@@ -45,33 +46,33 @@ export default async function AccountPage() {
         </div>
       </dl>
 
-      {session.user.role === "admin" ? (
-        <a
+      {session.user.role === "admin" || session.user.role === "manager" ? (
+        <Link
           href="/admin/users"
           className="mb-3 flex min-h-tap items-center justify-center rounded-lg border px-4 py-3 text-base"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
         >
-          Admin: user, divisi, setelan, audit
-        </a>
+          {session.user.role === "admin" ? "Admin: user, divisi, setelan, audit" : "User & aktivasi crew"}
+        </Link>
       ) : null}
 
       {session.user.role === "admin" || session.user.role === "manager" ? (
-        <a
+        <Link
           href="/master/checklist-items"
           className="mb-3 flex min-h-tap items-center justify-center rounded-lg border px-4 py-3 text-base"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
         >
           Master data & template
-        </a>
+        </Link>
       ) : null}
 
-      <a
+      <Link
         href="/me/password"
         className="mb-3 flex min-h-tap items-center justify-center rounded-lg border px-4 py-3 text-base"
         style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
       >
         Ganti password
-      </a>
+      </Link>
 
       <form action={logoutAction}>
         <button

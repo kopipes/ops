@@ -67,7 +67,8 @@ User dapat **mengelola project** (edit, member, checklist) jika:
 
 | Aksi | Admin | Corporate | Manager | User |
 |---|:-:|:-:|:-:|:-:|
-| Kelola user & divisi | ✅ | ❌ | ❌ | ❌ |
+| Kelola role, divisi, password user & master divisi | ✅ | ❌ | ❌ | ❌ |
+| Aktivasi/nonaktifkan & edit kontak crew | ✅ semua | ❌ | ✅ crew dengan divisi utama yang dikelolanya; tidak dapat mengedit Admin/Corporate/Manager | ❌ |
 | Kelola master checklist item & kategori | ✅ | ❌ | ✅ (divisinya) | ❌ |
 | Kelola checklist template | ✅ | ❌ | ✅ | ❌ |
 | Buat / edit project | ✅ | ❌ | ✅ (divisinya) | ❌ |
@@ -102,12 +103,15 @@ User dapat **mengelola project** (edit, member, checklist) jika:
 ## 4. User Flow
 
 ### 4.1 Login
+- Tautan **Daftar** membuka `/register`: nama, email, telepon opsional, satu divisi aktif, password dan konfirmasi. Akun baru selalu role `user`, `is_active=false`, `pending_approval=true`; tidak membuat sesi.
+- Sebelum login, akun baru wajib diaktifkan Admin atau Manager divisinya melalui **User & aktivasi**. Aktivasi tercatat dengan pelaku dan waktunya; Manager tidak dapat mengubah Admin, role, divisi, atau password.
 - Login dengan **email + password** **[KEPUTUSAN]**; session cookie berlaku 30 hari (crew tidak perlu login ulang tiap hari, cukup buka app).
 - "Lupa password" → reset oleh Admin (Admin set password sementara, user wajib ganti saat login berikutnya).
 - Setelah login, landing ke **Home "Hari Ini"**.
 
 ### 4.2 Home "Hari Ini" (Crew)
 Menampilkan project aktif hari ini milik user, masing-masing sebagai card:
+- Pencarian nama/kode/venue/client memperbarui hasil otomatis saat mengetik, tanpa tombol Submit. Halaman daftar Project menyediakan perilaku pencarian yang sama.
 
 ```
 ┌──────────────────────────────────────┐
@@ -122,8 +126,8 @@ Menampilkan project aktif hari ini milik user, masing-masing sebagai card:
 │ [ + Laporan Monitoring ]             │
 └──────────────────────────────────────┘
 ```
-- Tombol utama berubah sesuai waktu: pagi → "Isi Opening", siang → "+ Monitoring", malam → "Isi Closing". Semua fase tetap bisa diakses kapan saja.
-- Jika window opening sudah lewat dan belum diisi → badge merah "Terlambat".
+- Window opening/closing **nonaktif secara default** (keputusan pengguna, 3 Nov 2026): aplikasi memantau pekerjaan, bukan absensi. Semua fase tetap bisa diakses kapan saja; tombol utama menawarkan opening yang belum diisi, lalu monitoring.
+- Badge "Terlambat" hanya berlaku jika Admin mengaktifkan window fase tersebut di Setelan Global.
 
 ### 4.3 Opening (pagi)
 1. Crew tap "Isi Opening".
@@ -218,8 +222,7 @@ Langkah 3 pada wizard project (lihat §6.1):
 3. **Checklist**: lihat §5.3.
 4. **Member**: pilih user (search by nama/email, filter divisi). Default filter: user dari divisi project; bisa juga pilih user dari divisi lain (cross division). Role dalam project: `lead` / `crew`.
 5. **Pengaturan jadwal** (opsional, default dari settings global):
-   - Window opening (default 06:00–11:00)
-   - Window closing (default 17:00–23:59)
+   - Window opening/closing tidak perlu diisi saat nonaktif. Jika diaktifkan Admin, jam default masing-masing 06:00–11:00 dan 17:00–23:59.
    - Tipe hari: `loading_in` / `event` / `loading_out` per tanggal **[ASUMSI: opsional]**
 6. Review & Simpan → status `active` (atau `draft` jika disimpan sebagai draft).
 
@@ -244,18 +247,20 @@ Tampilan tabel/card per **project × tanggal**:
 | Pameran Otomotif | 2 Nov | ✅ 08:12 | 3 | ✅ 22:05 | 96% | 2 / 3 🔴 | ⏳ |
 
 Indikator warna:
-- Opening/closing: ✅ tepat waktu · 🟠 terlambat · ❌ tidak diisi.
+- Opening/closing: **Terisi / Belum diisi**, disertai jam submit (detik + zona waktu project). Penilaian tepat waktu/terlambat tidak ditampilkan saat window nonaktif.
 - Issue Critical/High terbuka → row ditandai merah.
 
 ### 7.2 Halaman Detail Hari (drill-down)
 Satu halaman scroll vertikal, urut waktu (**timeline**):
 1. Header: project, tanggal, ringkasan angka (checklist %, jumlah foto, issue baru/terbuka/selesai), handover catatan hari sebelumnya.
-2. **Opening**: siapa, jam submit, checklist (item NOT_OK ditampilkan paling atas & berwarna merah, item OK bisa di-collapse), foto (grid thumbnail, tap → lightbox swipe).
-3. **Monitoring entries** berurutan waktu.
-4. **Closing**.
+2. **Opening**: siapa, tanggal/jam submit dari server (termasuk detik dan zona waktu project), seluruh jawaban checklist beserta kategori/catatan (NOT_OK paling atas dan merah; klik judul checklist untuk meringkas), foto (thumbnail; klik/tap membuka modal foto penuh dengan tombol sebelumnya/berikutnya dan keyboard).
+3. **Monitoring entries** berurutan waktu, masing-masing mencantumkan pengisi, timestamp server, dan seluruh hasil checklist (termasuk OK).
+4. **Closing** juga mencantumkan pengisi dan timestamp server. Pengeditan tidak mengganti timestamp submit awal; waktu edit ditampilkan terpisah.
 5. **Issues hari ini**: card per issue dengan foto, next step, PIC, status, timeline update.
 6. **Galeri semua foto hari itu** (filter per fase).
 7. Panel review: tombol **"Mark as Reviewed"** + kolom komentar (komentar terlihat oleh crew).
+
+Header menyediakan tautan seluruh checklist project (semua fase, termasuk item yang belum dijawab). Angka issue terbuka serta indikator severity dashboard menuju daftar issue belum ditutup; Critical/overdue pada "Butuh perhatian" langsung membuka issue terkait. Severity dan status penanganan tampil terpisah. Perubahan status dilakukan di detail issue sesuai hak akses, dengan timeline yang tetap append-only; klik badge/angka tidak mengubah status secara otomatis.
 
 Tujuan desain: reviewer cukup scroll sekali, fokus ke anomali (NOT_OK, terlambat, issue High/Critical).
 
@@ -265,6 +270,7 @@ Tujuan desain: reviewer cukup scroll sekali, fokus ke anomali (NOT_OK, terlambat
 
 ### 7.4 Halaman Issues (global)
 - List semua issue yang bisa dilihat user, filter status/severity/project/divisi/PIC/tanggal, sort by severity & umur.
+- Cari judul/kode/deskripsi issue atau nama/kode project secara otomatis saat mengetik (250 ms). Filter project menyediakan pencarian nama/kode pilihan project; pemilihan langsung diterapkan tanpa Submit dan mempertahankan filter lain. Semua hasil tetap dibatasi akses project di server.
 
 ### 7.5 Export PDF (MVP) **[KEPUTUSAN]**
 - **PDF laporan harian** per project — tombol "Export PDF" di Detail Hari.
@@ -452,7 +458,7 @@ users(
   role CHECK(role IN ('admin','corporate','manager','user')),
   primary_division_id → divisions.id,
   must_change_password BOOLEAN DEFAULT 0,      -- reset oleh Admin (§4.1)
-  is_active, last_login_at, created_at, updated_at)
+  is_active, pending_approval DEFAULT false, last_login_at, created_at, updated_at)
 
 user_divisions(               -- termasuk divisi utama, agar query visibilitas cukup 1 join
   user_id → users.id, division_id → divisions.id,
@@ -654,7 +660,8 @@ Aturan role (lihat §2):
 | `/master/checklist-items` | admin, manager | CRUD item & kategori |
 | `/master/templates` | admin, manager | CRUD template |
 | `/master/issue-categories` | admin | CRUD kategori issue |
-| `/admin/users` | admin | CRUD user, reset password, divisi |
+| `/register` | publik | Daftar crew nonaktif; menunggu aktivasi Admin/Manager divisinya |
+| `/admin/users` | admin, manager terbatas | Admin: CRUD user/role/divisi/reset; Manager: aktivasi & kontak crew dengan divisi utama yang dikelolanya |
 | `/admin/divisions` | admin | CRUD divisi |
 | `/admin/settings` | admin | Default window opening/closing, timezone, dll (tanpa limit foto) |
 | `/admin/audit` | admin | Audit log global, filter user/entitas/tanggal |
@@ -668,7 +675,7 @@ Navigasi mobile: **bottom tab bar** — Hari Ini · Project · Issues · Report 
 
 Semua mutation memvalidasi input dengan Zod + cek permission di server.
 
-- `auth.login`, `auth.logout`, `auth.changePassword`
+- `auth.register`, `auth.login`, `auth.logout`, `auth.changePassword`
 - `users.list/create/update/deactivate/resetPassword`
 - `divisions.list/create/update`
 - `checklistItems.list/create/update/deactivate/reorder`
@@ -694,10 +701,13 @@ Semua mutation memvalidasi input dengan Zod + cek permission di server.
 - Manager/Admin bisa edit kapan saja (tercatat).
 - Perhitungan batas waktu di server memakai `project_days.date` + `projects.timezone`, bukan jam client.
 
-### 13.2 Status "terlambat" (is_late) **[ASUMSI]**
+### 13.2 Window opsional dan waktu pengisian (keputusan pengguna, 3 Nov 2026)
+- Window opening dan closing nonaktif secara default, berlaku secara global untuk semua project. Saat nonaktif, laporan bebas jam, tidak diberi status terlambat, dan pengaturan jam disembunyikan di wizard.
+- Setiap submit tetap mencatat `submitted_at` dari server dan `submitted_by`; tanggal, jam, detik, serta zona waktu project ditampilkan di report/detail/PDF. Waktu perangkat disimpan terpisah dan tidak menggantikan timestamp server.
+- Jika suatu window diaktifkan kembali, aturan berikut berlaku untuk fase tersebut:
 - `is_late` dihitung **saat submit** berdasarkan `opening_window_end` / closing window pada `projects` saat itu (jam server, zona waktu project), lalu **disimpan permanen** (tidak dihitung ulang saat render).
 - Alasan: status historis tidak boleh berubah bila window project diedit belakangan. Kolom `is_late` ikut tercatat di audit log saat submit.
-- Perubahan window berlaku hanya untuk laporan yang di-submit **setelah** perubahan disimpan. `project_days`/laporan lama tidak dihitung ulang; halaman Report menampilkan badge dari nilai tersimpan.
+- Perubahan jam window berlaku hanya untuk laporan yang di-submit **setelah** perubahan disimpan. Nilai historis di DB tidak diubah. Saat window global nonaktif, UI dan PDF tidak menampilkan penilaian keterlambatan historis tersebut.
 - Draft yang baru di-submit memakai window pada saat submit, bukan saat draft dibuat.
 
 ---
@@ -729,7 +739,7 @@ Semua mutation memvalidasi input dengan Zod + cek permission di server.
 - [ ] Monitoring bisa disubmit berkali-kali per hari oleh semua member.
 - [ ] Foto bisa diambil dari kamera maupun galeri.
 - [ ] Lokasi terekam jika izin diberikan; jika ditolak, submit tetap berjalan tanpa hambatan.
-- [ ] Opening setelah window berakhir ditandai "terlambat".
+- [ ] Tanpa window, opening/closing bisa diisi kapan saja dan menampilkan pengisi + timestamp server; jika window diaktifkan, submit setelah jam akhirnya ditandai "terlambat".
 - [ ] Submit ganda (double tap / retry jaringan) tidak membuat laporan dobel.
 
 **Foto**
@@ -800,7 +810,7 @@ Semua mutation memvalidasi input dengan Zod + cek permission di server.
    uploads/              # di luar repo / volume Docker
    ```
 3. **Semua** pengecekan akses lewat `server/permissions.ts`; buat unit test untuk tiap aturan visibilitas.
-4. Seed data demo: 3 divisi, 1 user tiap role (+1 user multi-divisi), 25 item checklist contoh, 2 template, 1 project aktif dengan laporan 2 hari dan beberapa issue berfoto.
+4. Seed data demo: 19 divisi sesuai daftar organisasi pengguna (3 Nov 2026), 1 user tiap role (+1 user multi-divisi), 25 item checklist contoh, 2 template; script preview menambahkan tiga skenario project (lengkap, sebagian, belum diisi).
 5. Gunakan transaksi untuk submit laporan (report + check results + link foto + issues) agar atomik.
 6. Jangan simpan blob foto di SQLite; simpan di disk, path di DB.
 7. Semua tanggal "hari event" dihitung dengan timezone project, bukan timezone server.

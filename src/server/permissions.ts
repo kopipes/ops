@@ -254,6 +254,14 @@ export function canEditReport(
 // ---------------------------------------------------------------------------
 
 export const canManageUsers = (u: ActingUser) => u.isActive && isAdmin(u);
+export const canAccessUserManagement = (u: ActingUser) => u.isActive && (isAdmin(u) || isManager(u));
+
+/** Managers manage crew profiles/activation in their primary division scope. */
+export function canManageUserAccount(u: ActingUser, target: { role: UserRole; primaryDivisionId: string | null }): boolean {
+  return canAccessUserManagement(u) && (isAdmin(u) || (
+    target.role === "user" && target.primaryDivisionId !== null && u.divisionIds.includes(target.primaryDivisionId)
+  ));
+}
 export const canManageDivisions = (u: ActingUser) => u.isActive && isAdmin(u);
 export const canViewAuditLog = (u: ActingUser) => u.isActive && isAdmin(u);
 export const canManageIssueCategories = (u: ActingUser) => u.isActive && isAdmin(u);

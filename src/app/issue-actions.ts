@@ -129,6 +129,11 @@ export async function changeIssueStatusAction(formData: FormData): Promise<void>
     );
     revalidatePath(`/issues/${parsed.data.issueId}`);
     revalidatePath("/issues");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/");
+    revalidatePath("/reports/day/[id]", "page");
+    revalidatePath("/projects/[id]", "page");
   } catch (err) {
     console.error("[issue status]", toError(err));
   }

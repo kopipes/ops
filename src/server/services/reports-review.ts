@@ -35,6 +35,7 @@ import {
 } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
+import { getGlobalSettings, isWindowEnabled } from "./app-settings";
 import { editDeadline, toLocalDate } from "@/lib/datetime";
 import { isReportEditable } from "@/server/permissions";
 
@@ -319,7 +320,7 @@ export async function getDailySummary(
 
     // Issues scoped to this day (new) and still-open for the project.
     const dayIssues = issueRows.filter((i) => i.projectDayId === day.id);
-    const openIssues = issueRows.filter((i) => i.status !== "closed");
+    const openIssues = issueRows.filter((i) => i.projectId === project.id && i.status !== "closed");
     const hasCriticalOpen = openIssues.some(
       (i) => i.severity === "critical" || i.severity === "high",
     );
@@ -473,6 +474,7 @@ export async function getDayDetail(
 
   const facts = await loadFacts(db, projectId);
   if (!canViewProject(user, facts)) return null;
+  const timingSettings = await getGlobalSettings(db);
 
   const day = await db
     .select()
@@ -615,7 +617,7 @@ export async function getDayDetail(
       phase,
       submittedByName: submitterName.get(report.submittedBy) ?? null,
       submittedAt: report.submittedAt,
-      isLate: Boolean(report.isLate),
+      isLate: Boolean(report.isLate) && isWindowEnabled(phase, timingSettings),
       notes: report.notes,
       phaseNote: report.phaseNote,
       latitude: report.latitude,
@@ -815,6 +817,8 @@ export interface DashboardData {
     projectId: string;
     projectName: string;
     detail: string;
+    issueId?: string;
+    issueStatus?: string;
   }[];
 }
 
@@ -896,7 +900,7 @@ export async function getDashboard(
           );
 
   const issueRows = await db
-    .select({ severity: issues.severity, status: issues.status, dueAt: issues.dueAt, projectId: issues.projectId })
+    .select({ id: issues.id, title: issues.title, severity: issues.severity, status: issues.status, dueAt: issues.dueAt, projectId: issues.projectId })
     .from(issues)
     .where(
       and(
@@ -968,15 +972,19 @@ export async function getDashboard(
       const p = projectRows.find((x) => x.id === i.projectId);
       needsAttention.push({
         kind: "critical_open",
+        issueId: i.id,
+        issueStatus: i.status,
         projectId: i.projectId,
         projectName: p?.name ?? "",
-        detail: "Ada issue Critical yang masih terbuka",
+        detail: `Critical: ${i.title}`,
       });
     }
     if (i.dueAt && i.dueAt < now) {
       const p = projectRows.find((x) => x.id === i.projectId);
       needsAttention.push({
         kind: "overdue",
+        issueId: i.id,
+        issueStatus: i.status,
         projectId: i.projectId,
         projectName: p?.name ?? "",
         detail: "Ada issue lewat target selesai",

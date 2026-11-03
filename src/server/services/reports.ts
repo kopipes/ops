@@ -32,6 +32,7 @@ import {
 import { editDeadline } from "@/lib/datetime";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
+import { getGlobalSettings, isWindowEnabled, type GlobalSettings } from "./app-settings";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -230,7 +231,8 @@ export async function submitReport(
 
   // §13.2: is_late is computed ONCE, here, against the window in force now.
   let isLate = false;
-  if (input.phase !== "monitoring") {
+  const settings = await getGlobalSettings(db);
+  if (isWindowEnabled(input.phase, settings)) {
     const windowEnd = windowEndFor(input.phase, ctx.project);
     isLate = computeIsLate(
       submittedAt,
@@ -566,8 +568,9 @@ export function isPhaseOverdue(
   dayDate: string,
   project: { openingWindowEnd: string; closingWindowEnd: string; timezone: string },
   now: number,
+  windows: Pick<GlobalSettings, "openingWindowEnabled" | "closingWindowEnabled"> = { openingWindowEnabled: true, closingWindowEnabled: true },
 ): boolean {
-  if (phase === "monitoring") return false;
+  if (!isWindowEnabled(phase, windows)) return false;
   const end = zonedToUtc(dayDate, windowEndFor(phase, project), project.timezone);
   return now > end;
 }

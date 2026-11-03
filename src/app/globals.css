@@ -41,6 +41,13 @@ body {
   padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
+/* Desktop uses the sidebar rail instead of the bottom tab bar. */
+@media (min-width: 1024px) {
+  body {
+    padding-bottom: 0;
+  }
+}
+
 /* Tap targets must be >= 44px (§9.4). */
 button,
 a[role="button"],

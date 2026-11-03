@@ -3,8 +3,8 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { UserManager } from "@/components/admin/UserManager";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
-import { listActiveDivisions, listUsersAdmin } from "@/server/services/admin";
-import { isAdmin } from "@/server/permissions";
+import { listActiveDivisions, listUsersForManagement } from "@/server/services/admin";
+import { canAccessUserManagement, isAdmin } from "@/server/permissions";
 import {
   resetPasswordAction,
   saveUserAction,
@@ -16,8 +16,7 @@ export const metadata = { title: "Admin — User" };
 export default async function AdminUsersPage() {
   const session = await requireUser();
 
-  // §12: /admin/users is admin-only, enforced server-side.
-  if (!isAdmin(session.user)) {
+  if (!canAccessUserManagement(session.user)) {
     return (
       <AppShell>
         <h1 className="mb-4 text-xl font-semibold">User</h1>
@@ -25,7 +24,7 @@ export default async function AdminUsersPage() {
           className="rounded-xl border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
         >
-          Halaman ini hanya untuk Admin.
+          Halaman ini hanya untuk Admin dan Manager.
         </p>
       </AppShell>
     );
@@ -33,13 +32,13 @@ export default async function AdminUsersPage() {
 
   const db = getDb();
   const [rows, divisions] = await Promise.all([
-    listUsersAdmin(db, session.user),
+    listUsersForManagement(db, session.user),
     listActiveDivisions(db),
   ]);
 
   return (
     <AppShell>
-      <AdminNav active="users" />
+      {isAdmin(session.user) ? <AdminNav active="users" /> : <p className="mb-4 text-sm" style={{ color: "var(--muted)" }}>Kelola crew dengan divisi utama di divisi Anda. Role, penempatan divisi, dan reset password dikelola Admin.</p>}
       <UserManager
         rows={rows.map((u) => ({
           id: u.id,
@@ -52,6 +51,7 @@ export default async function AdminUsersPage() {
           divisionIds: u.divisionIds,
           mustChangePassword: u.mustChangePassword,
           isActive: u.isActive,
+          pendingApproval: u.pendingApproval,
           lastLoginAt: u.lastLoginAt,
         }))}
         divisions={divisions.map((d) => ({ id: d.id, name: d.name }))}
@@ -59,6 +59,7 @@ export default async function AdminUsersPage() {
         resetAction={resetPasswordAction}
         toggleAction={toggleUserActiveAction}
         currentUserId={session.user.id}
+        canAdminister={isAdmin(session.user)}
       />
     </AppShell>
   );

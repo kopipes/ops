@@ -16,6 +16,7 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { textSearch } from "@/server/search";
 import {
   auditLogs,
   divisions,
@@ -600,7 +601,7 @@ export async function listIssues(
   db: DB,
   user: ActingUser,
   visibleProjectIds: string[],
-  opts: { status?: IssueStatus; projectId?: string; severity?: Severity } = {},
+  opts: { status?: IssueStatus; projectId?: string; severity?: Severity; excludeClosed?: boolean; activeProjectsOnly?: boolean; query?: string } = {},
 ): Promise<IssueListItem[]> {
   if (visibleProjectIds.length === 0) return [];
 
@@ -609,8 +610,12 @@ export async function listIssues(
     isNull(issues.deletedAt),
   ];
   if (opts.status) conditions.push(eq(issues.status, opts.status));
+  if (opts.excludeClosed) conditions.push(ne(issues.status, "closed"));
+  if (opts.activeProjectsOnly) conditions.push(eq(projects.status, "active"));
   if (opts.projectId) conditions.push(eq(issues.projectId, opts.projectId));
   if (opts.severity) conditions.push(eq(issues.severity, opts.severity));
+  const search = textSearch(opts.query, issues.title, issues.code, issues.description, projects.name, projects.code);
+  if (search) conditions.push(search);
 
   const rows = await db
     .select(listSelect)

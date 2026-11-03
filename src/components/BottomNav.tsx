@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { NavigationLink as Link } from "@/components/NavigationLink";
 import { usePathname } from "next/navigation";
 
 export interface Tab {
@@ -17,7 +17,7 @@ export function BottomNav({ tabs }: { tabs: Tab[] }) {
   return (
     <nav
       aria-label="Navigasi utama"
-      className="fixed bottom-0 left-0 right-0 z-40 border-t bg-[var(--surface)]"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t bg-[var(--surface)] lg:hidden"
       style={{ borderColor: "var(--border)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-between">

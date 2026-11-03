@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { today } from "./helpers";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
 const PHOTO = fileURLToPath(new URL("./fixtures/test-photo.jpg", import.meta.url));
 
@@ -218,9 +218,12 @@ test("crew cannot access the print view or export (§2.3)", async ({ page, brows
 
   await login(page, "crew@ops.test");
 
-  // Print route: not found for crew (server-side check, not a hidden link).
-  const res = await page.goto(`${BASE}/print/day/${dayId}`);
-  expect(res?.status()).toBe(404);
+  // Print route: denied for crew (server-side check, not a hidden link).
+  // Assert on the rendered 404 page rather than res.status(): the page streams,
+  // so Next commits a 200 before `notFound()` runs even though no data renders.
+  await page.goto(`${BASE}/print/day/${dayId}`);
+  await expect(page.getByText(/This page could not be found|404/i).first()).toBeVisible();
+  await expect(page.locator(".print-root")).toHaveCount(0);
 
   // And the export control is absent on the project settings tab.
   await page.goto(`${BASE}/projects/${id}?tab=settings`);

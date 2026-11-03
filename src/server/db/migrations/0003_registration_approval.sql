@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `pending_approval` integer DEFAULT false NOT NULL;

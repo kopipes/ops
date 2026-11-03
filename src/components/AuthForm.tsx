@@ -41,12 +41,18 @@ export function Field({
   type = "text",
   autoComplete,
   inputMode,
+  required = true,
+  minLength,
+  maxLength,
 }: {
   label: string;
   name: string;
   type?: string;
   autoComplete?: string;
   inputMode?: "text" | "email" | "numeric";
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
 }) {
   const id = `f-${name}`;
   return (
@@ -60,7 +66,9 @@ export function Field({
         type={type}
         autoComplete={autoComplete}
         inputMode={inputMode}
-        required
+        required={required}
+        minLength={minLength}
+        maxLength={maxLength}
         className="min-h-tap rounded-lg border px-3 py-3 text-base outline-none focus:ring-2"
         style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
       />

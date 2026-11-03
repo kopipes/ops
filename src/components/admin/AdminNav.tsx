@@ -16,7 +16,7 @@ export function AdminNav({
   return (
     <nav
       aria-label="Admin"
-      className="mb-4 grid grid-cols-2 gap-1 rounded-lg p-1 sm:grid-cols-4"
+      className="mb-4 grid grid-cols-2 gap-1 rounded-lg p-1 sm:grid-cols-4 lg:inline-grid lg:w-auto lg:grid-flow-col lg:auto-cols-max lg:grid-cols-none"
       style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
     >
       {links.map((l) => (

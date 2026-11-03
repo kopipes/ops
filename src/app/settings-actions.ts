@@ -19,14 +19,15 @@ export async function saveSettingsAction(
 
   try {
     await saveGlobalSettings(getDb(), session.user, {
+      openingWindowEnabled: formData.get("openingWindowEnabled") === "on",
+      closingWindowEnabled: formData.get("closingWindowEnabled") === "on",
       defaultOpeningWindowStart: String(formData.get("defaultOpeningWindowStart") ?? ""),
       defaultOpeningWindowEnd: String(formData.get("defaultOpeningWindowEnd") ?? ""),
       defaultClosingWindowStart: String(formData.get("defaultClosingWindowStart") ?? ""),
       defaultClosingWindowEnd: String(formData.get("defaultClosingWindowEnd") ?? ""),
       defaultTimezone: String(formData.get("defaultTimezone") ?? ""),
     });
-    revalidatePath("/admin/settings");
-    revalidatePath("/projects/new");
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {
     if (err instanceof ForbiddenError || err instanceof ValidationError) return { error: err.message };

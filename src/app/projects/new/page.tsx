@@ -129,7 +129,7 @@ export default async function NewProjectPage({
   const todayIso = toLocalDate(Date.now(), settings.defaultTimezone);
 
   return (
-    <AppShell>
+    <AppShell contentWidth="form">
       <h1 className="mb-4 text-xl font-semibold">Project Baru</h1>
       <ProjectWizard
         action={saveProjectAction}
@@ -151,6 +151,8 @@ export default async function NewProjectPage({
         todayIso={todayIso}
         errorFromQuery={error}
         defaults={{
+          openingWindowEnabled: settings.openingWindowEnabled,
+          closingWindowEnabled: settings.closingWindowEnabled,
           openingWindowStart: settings.defaultOpeningWindowStart,
           openingWindowEnd: settings.defaultOpeningWindowEnd,
           closingWindowStart: settings.defaultClosingWindowStart,

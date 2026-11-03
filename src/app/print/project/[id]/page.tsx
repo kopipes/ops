@@ -153,12 +153,13 @@ export default async function PrintRecapPage({
                   <h3 style={{ margin: "4px 0 2px" }}>{phaseLabel(phase)}</h3>
                   {!block ? (
                     <div className="bad" style={{ fontSize: 10 }}>
-                      Tidak diisi
+                      Belum diisi
                     </div>
                   ) : (
                     <>
                       <div className="muted" style={{ fontSize: 9 }}>
-                        {block.submittedByName ?? "—"} · {formatTime(block.submittedAt, d.project.timezone)}
+                        Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, d.project.timezone)}
+                        {block.editLabel ? ` · Diedit oleh ${block.editLabel.editedByName ?? "—"}, ${formatDateTime(block.editLabel.editedAt, d.project.timezone)}` : ""}
                         {block.isLate ? " · TERLAMBAT" : ""}
                       </div>
                       {block.phaseNote ? (
@@ -204,7 +205,8 @@ export default async function PrintRecapPage({
                 <ul style={{ fontSize: 10 }}>
                   {d.monitoring.map((m) => (
                     <li key={m.reportId}>
-                      {formatTime(m.submittedAt, d.project.timezone)} — {m.notes}
+                      Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(m.submittedAt, d.project.timezone)} — {m.notes}
+                      {m.editLabel ? ` · Diedit oleh ${m.editLabel.editedByName ?? "—"}, ${formatDateTime(m.editLabel.editedAt, d.project.timezone)}` : ""}
                     </li>
                   ))}
                 </ul>

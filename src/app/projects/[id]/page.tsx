@@ -18,6 +18,7 @@ import { listProjectChecklist } from "@/server/services/project-checklist";
 import { listMembers, listMemberCandidates } from "@/server/services/members";
 import { canExportPdf, canManageProject, canViewProject } from "@/server/permissions";
 import { toLocalDate } from "@/lib/datetime";
+import { getGlobalSettings, isWindowEnabled } from "@/server/services/app-settings";
 import {
   addMemberAction,
   removeMemberAction,
@@ -76,6 +77,7 @@ export default async function ProjectDetailPage({
 
   const canManage = canManageProject(session.user, facts);
   const canExport = canExportPdf(session.user, facts);
+  const settings = await getGlobalSettings(db);
 
   const [days, checklist, members, ownerDivision] = await Promise.all([
     listActiveProjectDays(db, id),
@@ -139,7 +141,7 @@ export default async function ProjectDetailPage({
 
       <nav
         aria-label="Tab project"
-        className="mb-4 grid grid-cols-3 gap-1 rounded-lg p-1"
+        className="mb-4 grid grid-cols-3 gap-1 rounded-lg p-1 lg:inline-grid lg:w-auto lg:grid-flow-col lg:auto-cols-max lg:grid-cols-none"
         style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
         {TABS.map((t) => (
@@ -147,7 +149,7 @@ export default async function ProjectDetailPage({
             key={t}
             href={`/projects/${id}?tab=${t}`}
             aria-current={tab === t ? "page" : undefined}
-            className="flex min-h-[40px] items-center justify-center rounded-md px-2 text-center text-xs"
+            className="flex min-h-[40px] items-center justify-center rounded-md px-2 text-center text-xs lg:px-6"
             style={{
               background: tab === t ? "var(--accent)" : "transparent",
               color: tab === t ? "#fff" : "var(--muted)",
@@ -198,7 +200,7 @@ export default async function ProjectDetailPage({
                       <span className="flex items-center gap-2">
                         <span>
                           {label}
-                          {rows.some((r) => r.isLate) ? " · terlambat" : ""}
+                          {isWindowEnabled(phase, settings) && rows.some((r) => r.isLate) ? " · terlambat" : ""}
                         </span>
                         {phase === "monitoring" || !submitted ? (
                           <a
@@ -534,11 +536,11 @@ export default async function ProjectDetailPage({
               ["Timezone", project.timezone],
               [
                 "Window opening",
-                `${project.openingWindowStart}–${project.openingWindowEnd}`,
+                settings.openingWindowEnabled ? `${project.openingWindowStart}–${project.openingWindowEnd}` : "Nonaktif — bebas jam",
               ],
               [
                 "Window closing",
-                `${project.closingWindowStart}–${project.closingWindowEnd}`,
+                settings.closingWindowEnabled ? `${project.closingWindowStart}–${project.closingWindowEnd}` : "Nonaktif — bebas jam",
               ],
               ["Jumlah hari", String(days.length)],
             ].map(([k, v]) => (

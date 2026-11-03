@@ -77,7 +77,7 @@ export default async function NewIssuePage({
   const members = projectId ? await listMembers(db, projectId) : [];
 
   return (
-    <AppShell>
+    <AppShell contentWidth="form">
       <h1 className="mb-4 text-xl font-semibold">Issue Baru</h1>
       <IssueForm
         action={createIssueAction}

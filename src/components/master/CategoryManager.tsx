@@ -127,7 +127,7 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
           Belum ada kategori.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
           {visible.map((r) => (
             <li
               key={r.id}

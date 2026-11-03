@@ -58,6 +58,8 @@ interface Props {
   errorFromQuery?: string;
   /** Global defaults from /admin/settings (§12). */
   defaults?: {
+    openingWindowEnabled: boolean;
+    closingWindowEnabled: boolean;
     openingWindowStart: string;
     openingWindowEnd: string;
     closingWindowStart: string;
@@ -222,7 +224,7 @@ export function ProjectWizard({
       ) : null}
 
       {/* ---------------- Step 1: basic info ---------------- */}
-      <section hidden={step !== 0} className="flex flex-col gap-3">
+      <section hidden={step !== 0} className={step === 0 ? "flex flex-col gap-3" : "hidden"}>
         <div className="flex flex-col gap-1">
           <Label htmlFor="code">Kode project</Label>
           <input
@@ -305,7 +307,7 @@ export function ProjectWizard({
       </section>
 
       {/* ---------------- Step 2: divisions ---------------- */}
-      <section hidden={step !== 1} className="flex flex-col gap-3">
+      <section hidden={step !== 1} className={step === 1 ? "flex flex-col gap-3" : "hidden"}>
         <div className="flex flex-col gap-1">
           <span className="text-sm" style={{ color: "var(--muted)" }}>
             Divisi owner (wajib)
@@ -353,7 +355,7 @@ export function ProjectWizard({
       </section>
 
       {/* ---------------- Step 3: checklist ---------------- */}
-      <section hidden={step !== 2} className="flex flex-col gap-3">
+      <section hidden={step !== 2} className={step === 2 ? "flex flex-col gap-3" : "hidden"}>
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm" style={{ color: "var(--muted)" }}>
             Sumber checklist
@@ -540,7 +542,7 @@ export function ProjectWizard({
       </section>
 
       {/* ---------------- Step 4: members ---------------- */}
-      <section hidden={step !== 3} className="flex flex-col gap-3">
+      <section hidden={step !== 3} className={step === 3 ? "flex flex-col gap-3" : "hidden"}>
         <input
           type="search"
           aria-label="Cari member"
@@ -621,21 +623,24 @@ export function ProjectWizard({
       </section>
 
       {/* ---------------- Step 5: schedule & save ---------------- */}
-      <section hidden={step !== 4} className="flex flex-col gap-3">
+      <section hidden={step !== 4} className={step === 4 ? "flex flex-col gap-3" : "hidden"}>
+        {!defaults?.openingWindowEnabled && !defaults?.closingWindowEnabled ? (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>Tanpa window opening/closing. Waktu pengisian laporan tetap dicatat otomatis.</p>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
+          <div className={defaults?.openingWindowEnabled ? "flex flex-col gap-1" : "hidden"}>
             <Label htmlFor="openingWindowStart">Opening mulai</Label>
             <input id="openingWindowStart" name="openingWindowStart" type="time" defaultValue={defaults?.openingWindowStart ?? "06:00"} className={inputCls} style={inputStyle} />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className={defaults?.openingWindowEnabled ? "flex flex-col gap-1" : "hidden"}>
             <Label htmlFor="openingWindowEnd">Opening selesai</Label>
             <input id="openingWindowEnd" name="openingWindowEnd" type="time" defaultValue={defaults?.openingWindowEnd ?? "11:00"} className={inputCls} style={inputStyle} />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className={defaults?.closingWindowEnabled ? "flex flex-col gap-1" : "hidden"}>
             <Label htmlFor="closingWindowStart">Closing mulai</Label>
             <input id="closingWindowStart" name="closingWindowStart" type="time" defaultValue={defaults?.closingWindowStart ?? "17:00"} className={inputCls} style={inputStyle} />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className={defaults?.closingWindowEnabled ? "flex flex-col gap-1" : "hidden"}>
             <Label htmlFor="closingWindowEnd">Closing selesai</Label>
             <input id="closingWindowEnd" name="closingWindowEnd" type="time" defaultValue={defaults?.closingWindowEnd ?? "23:59"} className={inputCls} style={inputStyle} />
           </div>

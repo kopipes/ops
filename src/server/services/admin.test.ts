@@ -12,12 +12,14 @@ import {
   createUser,
   listDivisions,
   listUsersAdmin,
+  listUsersForManagement,
   resetUserPassword,
   setDivisionActive,
   setUserActive,
   setUserDivisions,
   updateDivision,
   updateUser,
+  updateManagedUser,
   type UserInput,
 } from "./admin";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
@@ -70,6 +72,40 @@ beforeEach(async () => {
 afterEach(() => sqlite.close());
 
 describe("user admin permissions (§2.3)", () => {
+  it("managers list only crew in their own primary division", async () => {
+    await db.update(schema.users).set({ primaryDivisionId: "d-ops" }).where(eq(schema.users.id, "u-admin"));
+    const rows = await listUsersForManagement(db, mgr);
+    expect(rows.map(row => row.id)).toEqual(["u-crew"]);
+    await db.update(schema.users).set({ primaryDivisionId: "d-ops" }).where(eq(schema.users.id, "u-crew"));
+    expect(await listUsersForManagement(db, mgr)).toEqual([]);
+    await expect(listUsersForManagement(db, crew)).rejects.toThrow();
+  });
+
+  it("managers cannot mutate Admin profiles, activation, division membership or passwords", async () => {
+    await expect(updateManagedUser(db, mgr, "u-admin", userInput({ role: "admin" }))).rejects.toThrow();
+    await expect(setUserActive(db, mgr, "u-admin", false)).rejects.toThrow();
+    await expect(setUserDivisions(db, mgr, "u-admin", "d-evt", [])).rejects.toThrow();
+    await expect(resetUserPassword(db, mgr, "u-admin", "new-password-1")).rejects.toThrow();
+    expect((await db.select().from(schema.users).where(eq(schema.users.id, "u-admin")).get())?.isActive).toBe(true);
+  });
+
+  it("manager profile edits preserve crew role and memberships", async () => {
+    await updateManagedUser(db, mgr, "u-crew", userInput({ name: "Crew Updated", email: "updated@example.test", password: undefined }));
+    expect(await db.select().from(schema.users).where(eq(schema.users.id, "u-crew")).get()).toMatchObject({ name: "Crew Updated", role: "user", primaryDivisionId: "d-evt" });
+    await expect(updateManagedUser(db, mgr, "u-crew", userInput({ role: "admin" }))).rejects.toThrow();
+    await expect(updateManagedUser(db, mgr, "u-crew", userInput({ primaryDivisionId: "d-ops" }))).rejects.toThrow();
+    await expect(updateManagedUser(db, mgr, "u-crew", userInput({ additionalDivisionIds: ["d-ops"] }))).rejects.toThrow();
+  });
+
+  it("activation checks fresh target role and fresh manager privileges", async () => {
+    await db.update(schema.users).set({ role: "admin" }).where(eq(schema.users.id, "u-crew"));
+    await expect(setUserActive(db, mgr, "u-crew", false)).rejects.toThrow();
+    await expect(updateManagedUser(db, mgr, "u-crew", userInput())).rejects.toThrow();
+    await db.update(schema.users).set({ role: "user" }).where(eq(schema.users.id, "u-crew"));
+    await db.update(schema.users).set({ role: "user" }).where(eq(schema.users.id, "u-mgr"));
+    await expect(setUserActive(db, mgr, "u-crew", false)).rejects.toThrow();
+    await expect(updateManagedUser(db, mgr, "u-crew", userInput())).rejects.toThrow();
+  });
   it("only admin may list users", async () => {
     await expect(listUsersAdmin(db, mgr)).rejects.toThrow();
     await expect(listUsersAdmin(db, admin)).resolves.toHaveLength(3);

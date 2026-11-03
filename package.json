@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:preview": "NEXT_DIST_DIR=.next-preview next build",
+    "preview": "NEXT_DIST_DIR=.next-preview next start -p 3112",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -15,7 +17,8 @@
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:seed": "tsx src/server/db/seed.ts",
     "db:reset": "tsx src/server/db/reset.ts",
-    "disk:check": "tsx scripts/disk-check.ts"
+    "disk:check": "tsx scripts/disk-check.ts",
+    "demo:prepare": "tsx scripts/prepare-demo.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

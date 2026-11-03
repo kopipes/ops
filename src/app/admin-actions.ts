@@ -10,7 +10,7 @@ import {
   setDivisionActive,
   setUserActive,
   updateDivision,
-  updateUser,
+  updateManagedUser,
 } from "@/server/services/admin";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
@@ -34,6 +34,7 @@ function toError(err: unknown): AdminActionState {
 const revalidateAdmin = () => {
   revalidatePath("/admin/users");
   revalidatePath("/admin/divisions");
+  revalidatePath("/register");
 };
 
 export async function saveUserAction(
@@ -60,7 +61,7 @@ export async function saveUserAction(
   try {
     const db = getDb();
     if (id) {
-      await updateUser(db, actor, id, input);
+      await updateManagedUser(db, actor, id, input);
       revalidateAdmin();
       return { ok: true, createdId: id };
     }
@@ -89,17 +90,18 @@ export async function resetPasswordAction(
   }
 }
 
-export async function toggleUserActiveAction(formData: FormData): Promise<void> {
+export async function toggleUserActiveAction(_prev: AdminActionState, formData: FormData): Promise<AdminActionState> {
   const actor = await acting();
   const id = String(formData.get("id") ?? "");
   const isActive = formData.get("isActive") === "1";
-  if (!id) return;
+  if (!id) return { error: "User tidak valid" };
 
   try {
     await setUserActive(getDb(), actor, id, isActive);
     revalidateAdmin();
+    return { ok: true };
   } catch (err) {
-    console.error("[toggle user]", toError(err));
+    return toError(err);
   }
 }
 

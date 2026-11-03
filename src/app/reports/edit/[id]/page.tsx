@@ -6,6 +6,7 @@ import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { getEditableReport, listReportRevisions } from "@/server/services/report-edits";
 import { editReportAction } from "@/app/edit-actions";
+import { formatReportTimestamp } from "@/lib/datetime";
 
 export const metadata = { title: "Edit Laporan — Ops" };
 
@@ -30,7 +31,7 @@ export default async function EditReportPage({
   const { report, canEdit, editBlockedReason } = loaded;
 
   return (
-    <AppShell>
+    <AppShell contentWidth="form">
       <header className="mb-4">
         <Link href="/reports" className="text-xs" style={{ color: "var(--muted)" }}>
           ← Report
@@ -39,7 +40,7 @@ export default async function EditReportPage({
         <p className="text-xs" style={{ color: "var(--muted)" }}>
           Diisi oleh {report.submittedByName ?? "—"}
           {report.submittedAt
-            ? ` · ${new Date(report.submittedAt).toLocaleString("id-ID")}`
+            ? ` · Waktu pengisian: ${formatReportTimestamp(report.submittedAt, report.timezone)}`
             : ""}
         </p>
 
@@ -47,7 +48,7 @@ export default async function EditReportPage({
         {report.editCount > 0 ? (
           <p className="mt-1 text-xs" style={{ color: "#9a3412" }}>
             Diedit oleh {report.lastEditedByName ?? "—"}
-            {report.lastEditedAt ? `, ${new Date(report.lastEditedAt).toLocaleString("id-ID")}` : ""} ·{" "}
+            {report.lastEditedAt ? `, ${formatReportTimestamp(report.lastEditedAt, report.timezone)}` : ""} ·{" "}
             {report.editCount}×
           </p>
         ) : null}
@@ -94,7 +95,7 @@ export default async function EditReportPage({
               >
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   Versi {i + 1} · {rev.editedByName ?? "—"} ·{" "}
-                  {new Date(rev.createdAt).toLocaleString("id-ID")}
+                  {formatReportTimestamp(rev.createdAt, report.timezone)}
                 </p>
 
                 {rev.changes.length > 0 ? (

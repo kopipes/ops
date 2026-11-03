@@ -51,6 +51,8 @@ export const users = sqliteTable("users", {
     .default(false),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   lastLoginAt: ts("last_login_at"),
+  /** Self-registered accounts stay inactive until an authorized activation. */
+  pendingApproval: integer("pending_approval", { mode: "boolean" }).notNull().default(false),
   createdAt,
   updatedAt,
 }, (t) => ({

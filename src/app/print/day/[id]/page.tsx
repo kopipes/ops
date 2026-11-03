@@ -112,7 +112,7 @@ export default async function PrintDayPage({
             return (
               <div key={phase}>
                 <h2>{phaseLabel(phase)}</h2>
-                <div className="block bad">Tidak diisi</div>
+                <div className="block muted">Belum diisi</div>
               </div>
             );
           }
@@ -126,7 +126,8 @@ export default async function PrintDayPage({
               <h2>{phaseLabel(phase)}</h2>
               <div className="block">
                 <div className="muted" style={{ marginBottom: 4 }}>
-                  {block.submittedByName ?? "—"} · {formatTime(block.submittedAt, tz)}
+                  Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, tz)}
+                  {block.editLabel ? ` · Diedit oleh ${block.editLabel.editedByName ?? "—"}, ${formatDateTime(block.editLabel.editedAt, tz)}` : ""}
                   {block.isLate ? " · TERLAMBAT" : ""}
                   {block.latitude
                     ? ` · lokasi ${block.latitude},${block.longitude}`
@@ -184,7 +185,8 @@ export default async function PrintDayPage({
             {detail.monitoring.map((m) => (
               <div key={m.reportId} className="block">
                 <div className="muted">
-                  {formatTime(m.submittedAt, tz)} · {m.submittedByName ?? "—"}
+                  Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(m.submittedAt, tz)}
+                  {m.editLabel ? ` · Diedit oleh ${m.editLabel.editedByName ?? "—"}, ${formatDateTime(m.editLabel.editedAt, tz)}` : ""}
                   {m.latitude ? ` · lokasi ${m.latitude},${m.longitude}` : ""}
                 </div>
                 <div>{m.notes}</div>

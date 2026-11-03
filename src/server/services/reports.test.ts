@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/server/db/schema";
 import type { ActingUser } from "@/server/permissions";
 import {
@@ -19,6 +19,7 @@ import { syncProjectChecklist } from "./project-checklist";
 import { addMember } from "./members";
 import { detectImageType, MAX_UPLOAD_BYTES } from "./photos";
 import { zonedToUtc } from "@/lib/datetime";
+import { DEFAULT_SETTINGS, saveGlobalSettings } from "./app-settings";
 
 const MIGRATIONS = resolve(process.cwd(), "src/server/db/migrations");
 
@@ -430,6 +431,7 @@ describe("submitReport atomicity (§16.5)", () => {
 
 describe("is_late (§13.2)", () => {
   it("marks an opening submitted after the window as late", async () => {
+    await saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, openingWindowEnabled: true });
     // Window ends 11:00 Jakarta = 04:00Z. Submit at 12:00 Jakarta.
     const late = zonedToUtc("2026-11-02", "12:00", "Asia/Jakarta");
     const res = await submitReport(db, sqlite, lead, baseInput({ observedAt: late }));
@@ -446,6 +448,34 @@ describe("is_late (§13.2)", () => {
     const res = await submitReport(db, sqlite, crew, baseInput({ phase: "monitoring" }));
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.isLate).toBe(false);
+  });
+
+  it("records server submission time for opening and closing with both windows disabled", async () => {
+    const serverNow = zonedToUtc("2026-11-03", "15:30", "Asia/Jakarta");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(serverNow);
+    try {
+      await seedPhoto("p1", "u-lead");
+      for (const phase of ["opening", "closing"] as const) {
+        const res = await submitReport(db, sqlite, lead, baseInput({ phase, clientSubmissionId: `no-window-${phase}`, observedAt: 0, ...(phase === "closing" ? { results: [] } : {}) }));
+        expect(res.ok).toBe(true);
+        if (!res.ok) throw new Error(res.message);
+        expect(res.isLate).toBe(false);
+        const stored = await db.select().from(schema.reports).where(eq(schema.reports.id, res.reportId)).get();
+        expect(stored?.submittedAt).toBe(serverNow);
+        expect(stored?.submittedBy).toBe(lead.id);
+        expect(stored?.observedAt).toBe(0);
+      }
+    } finally { clock.mockRestore(); }
+  });
+
+  it("keeps closing lateness enabled independently of opening", async () => {
+    await saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, openingWindowEnabled: false, closingWindowEnabled: true });
+    await seedPhoto("p1", "u-lead");
+    const opening = await submitReport(db, sqlite, lead, baseInput());
+    const closing = await submitReport(db, sqlite, lead, baseInput({ phase: "closing", clientSubmissionId: "independent-closing", results: [] }));
+    expect(opening.ok && opening.isLate).toBe(false);
+    expect(closing.ok).toBe(true);
+    if (closing.ok) expect(closing.isLate).toBe(Date.now() > zonedToUtc("2026-11-02", "23:59", "Asia/Jakarta"));
   });
 });
 
@@ -510,6 +540,12 @@ describe("saveDraft", () => {
 });
 
 describe("isPhaseOverdue (§4.2 late badge)", () => {
+  it("does not show overdue badges when windows are disabled", () => {
+    const project = { openingWindowEnd: "11:00", closingWindowEnd: "23:59", timezone: "Asia/Jakarta" };
+    const later = zonedToUtc("2026-11-03", "15:00", project.timezone);
+    expect(isPhaseOverdue("opening", "2026-11-02", project, later, DEFAULT_SETTINGS)).toBe(false);
+    expect(isPhaseOverdue("closing", "2026-11-02", project, later, DEFAULT_SETTINGS)).toBe(false);
+  });
   const project = {
     openingWindowEnd: "11:00",
     closingWindowEnd: "23:59",

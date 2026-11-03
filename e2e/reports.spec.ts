@@ -4,9 +4,9 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { today } from "./helpers";
+import { today, waitForHydration } from "./helpers";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
 const PHOTO = fileURLToPath(new URL("./fixtures/test-photo.jpg", import.meta.url));
 
@@ -86,7 +86,7 @@ test("report list shows today's row with phase status (§7.1)", async ({ page })
   await createTodayProject(page, name);
 
   await page.goto(`${BASE}/reports`);
-  const row = page.getByRole("link", { name: new RegExp(name) }).first();
+  const row = page.locator("main > ul > li", { hasText: name }).first();
   await expect(row).toBeVisible();
   await expect(row).toContainText("Opening");
   await expect(row).toContainText("Checklist OK");
@@ -102,6 +102,20 @@ test("day detail shows the timeline with NOT_OK highlighted (§7.2)", async ({ p
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await expect(page.getByText("Opening").first()).toBeVisible();
   await expect(page.getByText(/Checklist OK/)).toBeVisible();
+  await expect(page.getByText("Area venue bersih dan siap dipakai", { exact: true })).toBeVisible();
+  await expect(page.locator('details[id^="checklist-"]').first()).toHaveAttribute("open", "");
+  await waitForHydration(page, 'button[aria-label^="Perbesar"]');
+  const thumbnail = page.getByRole("button", { name: /^Perbesar Foto opening/ }).first();
+  await thumbnail.click();
+  const modal = page.getByRole("dialog");
+  await expect(modal).toBeVisible();
+  const original = await modal.locator("img").getAttribute("src");
+  expect(original).not.toContain("v=thumb");
+  await page.keyboard.press("ArrowRight");
+  await expect(modal.locator("img")).not.toHaveAttribute("src", original!);
+  await page.keyboard.press("Escape");
+  await expect(modal).toBeHidden();
+  await expect(thumbnail).toBeFocused();
 });
 
 test("manager can Mark as Reviewed and the state persists (§7.2 no.7)", async ({ page }) => {

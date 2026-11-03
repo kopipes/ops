@@ -1,13 +1,14 @@
 /**
  * Seed data (PRD §16.4).
  *
- * Creates: 3 divisions, one user per role plus a multi-division user,
+ * Creates: 19 divisions, one user per role plus a multi-division user,
  * 25 checklist items, 2 templates.
  *
  * Idempotent: safe to re-run — every write is an upsert on a fixed id.
  * Demo credentials are printed at the end; do NOT run this against production.
  */
 import { getDb } from "./index";
+import { eq, or } from "drizzle-orm";
 import {
   checklistCategories,
   checklistItems,
@@ -23,10 +24,26 @@ import { hashPassword } from "@/server/auth/password";
 
 export const DEMO_PASSWORD = "OpsDemo2026!";
 
-const DIVISIONS = [
-  { id: "div-evt", code: "EVT", name: "Event Operations" },
-  { id: "div-ops", code: "OPS", name: "Site & Logistics" },
-  { id: "div-cre", code: "CRE", name: "Creative & Production" },
+export const DIVISIONS = [
+  { id: "div-acc", code: "ACC", name: "Accounting" },
+  { id: "div-cre", code: "CRE", name: "Creative" },
+  { id: "div-event-deniheidi", code: "EVTDH", name: "Event DeniHeidi" },
+  { id: "div-event-desendevy", code: "EVTDD", name: "Event DesenDevy" },
+  { id: "div-evt", code: "EVT", name: "Event Production" },
+  { id: "div-event-sports", code: "EVTSPT", name: "Event Sports" },
+  { id: "div-finance", code: "FIN", name: "Finance" },
+  { id: "div-futurevast", code: "FV", name: "FutureVast" },
+  { id: "div-hr-ga", code: "HRGA", name: "HR-GA" },
+  { id: "div-ntop", code: "NTOP", name: "NTOP" },
+  { id: "div-ops", code: "OPS", name: "Operation" },
+  { id: "div-premium", code: "PREM", name: "Premium" },
+  { id: "div-retail", code: "RTL", name: "Retail" },
+  { id: "div-sacca-expo", code: "SACEX", name: "Sacca Expo" },
+  { id: "div-sacca-mall", code: "SACML", name: "Sacca Mall" },
+  { id: "div-social-media", code: "SOCMED", name: "Social Media" },
+  { id: "div-starlight", code: "STAR", name: "Starlight" },
+  { id: "div-studios", code: "STUD", name: "Studios" },
+  { id: "div-eats", code: "EATS", name: "Eats" },
 ];
 
 interface DemoUser {
@@ -164,9 +181,12 @@ export async function seed() {
 
   // Divisions
   for (const d of DIVISIONS) {
+    // Reuse a matching catalog row even if it was originally created in Admin.
+    const existing = await db.select({ id: divisions.id }).from(divisions)
+      .where(or(eq(divisions.id, d.id), eq(divisions.code, d.code), eq(divisions.name, d.name))).get();
     await db
       .insert(divisions)
-      .values({ ...d, isActive: true, createdAt: now, updatedAt: now })
+      .values({ ...d, id: existing?.id ?? d.id, isActive: true, createdAt: now, updatedAt: now })
       .onConflictDoUpdate({
         target: divisions.id,
         set: { code: d.code, name: d.name, updatedAt: now },

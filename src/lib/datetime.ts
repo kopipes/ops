@@ -53,6 +53,16 @@ export function toLocalTime(instant: number, timeZone: string): string {
   return dtf.format(new Date(instant));
 }
 
+/** Actual server submission/edit timestamp, shown in the project's timezone. */
+export function formatReportTimestamp(instant: number | null, timeZone: string): string {
+  if (instant === null) return "—";
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone, day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, timeZoneName: "short",
+  }).format(new Date(instant));
+}
+
 /**
  * Converts a wall-clock date + time in `timeZone` to a UTC instant (ms).
  * Handles DST by resolving the offset at the target instant.

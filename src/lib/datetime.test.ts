@@ -4,10 +4,21 @@ import {
   computeIsLate,
   dateRange,
   editDeadline,
+  formatReportTimestamp,
   toLocalDate,
   toLocalTime,
   zonedToUtc,
 } from "./datetime";
+
+describe("report timestamps", () => {
+  it("includes seconds and the project timezone rather than the server timezone", () => {
+    const instant = Date.parse("2026-11-03T01:15:30Z");
+    expect(formatReportTimestamp(instant, "Asia/Jakarta")).toContain("08.15.30 WIB");
+    expect(formatReportTimestamp(instant, "Asia/Makassar")).toContain("09.15.30 WITA");
+    expect(formatReportTimestamp(instant, "Asia/Jayapura")).toContain("10.15.30 WIT");
+    expect(formatReportTimestamp(null, "Asia/Jakarta")).toBe("—");
+  });
+});
 
 describe("zonedToUtc", () => {
   it("converts WIB (UTC+7) correctly", () => {

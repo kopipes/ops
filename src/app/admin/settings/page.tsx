@@ -29,11 +29,11 @@ export default async function AdminSettingsPage() {
   const settings = await getGlobalSettings(getDb());
 
   return (
-    <AppShell>
+    <AppShell contentWidth="form">
       <AdminNav active="settings" />
       <h1 className="mb-1 text-xl font-semibold">Setelan Global</h1>
       <p className="mb-4 text-xs" style={{ color: "var(--muted)" }}>
-        Nilai default saat membuat project baru. Project yang sudah ada tidak berubah.
+        Penggunaan window berlaku untuk semua project. Jam default dan timezone dipakai saat membuat project baru.
       </p>
       <SettingsForm action={saveSettingsAction} initial={settings} />
     </AppShell>

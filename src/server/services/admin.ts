@@ -4,12 +4,12 @@
  * These are the surfaces that make the app usable without touching the database:
  * without them, real crew cannot be onboarded (AC "Admin bisa membuat user").
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { divisions, sessions, userDivisions, users } from "@/server/db/schema";
+import { auditLogs, divisions, sessions, userDivisions, users } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
-import { canManageDivisions, canManageUsers, type ActingUser } from "@/server/permissions";
+import { canAccessUserManagement, canManageUserAccount, canManageDivisions, canManageUsers, isAdmin, type ActingUser } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 import { hashPassword } from "@/server/auth/password";
 
@@ -26,14 +26,23 @@ export interface AdminUserRow {
   divisionIds: string[];
   mustChangePassword: boolean;
   isActive: boolean;
+  pendingApproval: boolean;
   lastLoginAt: number | null;
   createdAt: number;
 }
 
 export async function listUsersAdmin(db: DB, actor: ActingUser): Promise<AdminUserRow[]> {
   if (!canManageUsers(actor)) throw new ForbiddenError();
+  return listUsersForManagement(db, actor);
+}
 
-  const rows = await db.select().from(users).orderBy(asc(users.name));
+export async function listUsersForManagement(db: DB, actor: ActingUser): Promise<AdminUserRow[]> {
+  if (!canAccessUserManagement(actor)) throw new ForbiddenError();
+  if (!isAdmin(actor) && actor.divisionIds.length === 0) return [];
+
+  const rows = await db.select().from(users)
+    .where(isAdmin(actor) ? undefined : and(eq(users.role, "user"), inArray(users.primaryDivisionId, actor.divisionIds)))
+    .orderBy(desc(users.pendingApproval), asc(users.name));
   if (rows.length === 0) return [];
 
   const memberships = await db
@@ -60,6 +69,7 @@ export async function listUsersAdmin(db: DB, actor: ActingUser): Promise<AdminUs
     divisionIds: memberships.filter((m) => m.userId === r.id).map((m) => m.divisionId),
     mustChangePassword: r.mustChangePassword,
     isActive: r.isActive,
+    pendingApproval: r.pendingApproval,
     lastLoginAt: r.lastLoginAt,
     createdAt: r.createdAt,
   }));
@@ -155,6 +165,39 @@ export async function updateUser(
   await setUserDivisions(db, actor, userId, input.primaryDivisionId, input.additionalDivisionIds);
 }
 
+/** Read current privileges inside writes, so a stale request cannot edit a new Admin. */
+function freshActor(db: Pick<DB, "select">, actorId: string): ActingUser {
+  const actor = db.select({ id: users.id, role: users.role, isActive: users.isActive, pendingApproval: users.pendingApproval }).from(users).where(eq(users.id, actorId)).get();
+  if (!actor) throw new ForbiddenError();
+  const memberships = db.select({ id: userDivisions.divisionId }).from(userDivisions).where(eq(userDivisions.userId, actorId)).all();
+  return { id: actor.id, role: actor.role, isActive: actor.isActive && !actor.pendingApproval, divisionIds: memberships.map(row => row.id) };
+}
+
+/** Manager edits only crew contact details; role, divisions and passwords stay Admin-only. */
+export async function updateManagedUser(db: DB, actor: ActingUser, userId: string, input: UserInput): Promise<void> {
+  if (isAdmin(actor)) return updateUser(db, actor, userId, input);
+  if (!canAccessUserManagement(actor)) throw new ForbiddenError();
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (!name || name.length > 120 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError("Nama atau email tidak valid");
+  db.transaction(tx => {
+    const currentActor = freshActor(tx, actor.id);
+    const target = tx.select({ id: users.id, role: users.role, primaryDivisionId: users.primaryDivisionId }).from(users).where(eq(users.id, userId)).get();
+    if (!target || !canManageUserAccount(currentActor, target)) throw new ForbiddenError("Manager hanya bisa mengelola crew di divisinya");
+    const memberships = tx.select({ id: userDivisions.divisionId }).from(userDivisions).where(eq(userDivisions.userId, userId)).all();
+    const existingExtra = memberships.map(row => row.id).filter(id => id !== target.primaryDivisionId).sort();
+    const requestedExtra = [...new Set(input.additionalDivisionIds)].filter(id => id !== input.primaryDivisionId).sort();
+    if (input.role !== target.role || input.primaryDivisionId !== target.primaryDivisionId || JSON.stringify(existingExtra) !== JSON.stringify(requestedExtra)) {
+      throw new ForbiddenError("Role dan divisi hanya bisa diubah oleh Admin");
+    }
+    const duplicate = tx.select({ id: users.id }).from(users).where(eq(users.email, email)).get();
+    if (duplicate && duplicate.id !== userId) throw new ValidationError("Email sudah dipakai");
+    const now = Date.now();
+    tx.update(users).set({ name, email, phone: input.phone?.trim() || null, updatedAt: now }).where(eq(users.id, userId)).run();
+    tx.insert(auditLogs).values({ id: randomUUID(), userId: currentActor.id, action: "user.profile_updated", entityType: "user", entityId: userId, metaJson: JSON.stringify({ fields: ["name", "email", "phone"] }), createdAt: now }).run();
+  });
+}
+
 /**
  * Replaces memberships: primary + additional. The primary division is always
  * present in `user_divisions` so visibility checks have one source of truth.
@@ -214,26 +257,24 @@ export async function setUserActive(
   userId: string,
   isActive: boolean,
 ): Promise<void> {
-  if (!canManageUsers(actor)) throw new ForbiddenError();
-  if (userId === actor.id) throw new ValidationError("Tidak bisa menonaktifkan akun sendiri");
-
-  if (!isActive) {
-    // Never leave the system without an admin who can log in.
-    const target = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).get();
-    if (target?.role === "admin" && (await countActiveAdmins(db, userId)) === 0) {
-      throw new ValidationError("Tidak bisa menonaktifkan Admin terakhir");
+  if (!canAccessUserManagement(actor)) throw new ForbiddenError();
+  db.transaction(tx => {
+    const currentActor = freshActor(tx, actor.id);
+    const target = tx.select({ id: users.id, role: users.role, primaryDivisionId: users.primaryDivisionId, pendingApproval: users.pendingApproval }).from(users).where(eq(users.id, userId)).get();
+    if (!target || !canManageUserAccount(currentActor, target)) throw new ForbiddenError("Kamu tidak bisa mengelola akun ini");
+    if (userId === currentActor.id) throw new ValidationError("Tidak bisa menonaktifkan akun sendiri");
+    if (!isActive && target.role === "admin") {
+      const admins = tx.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.isActive, true))).all();
+      if (!admins.some(admin => admin.id !== userId)) throw new ValidationError("Tidak bisa menonaktifkan Admin terakhir");
     }
-  }
-
-  await db
-    .update(users)
-    .set({ isActive, updatedAt: Date.now() })
-    .where(eq(users.id, userId));
-
-  if (!isActive) {
-    // §14 AC: deactivation invalidates live sessions immediately.
-    await db.delete(sessions).where(eq(sessions.userId, userId));
-  }
+    if (isActive && target.role === "user" && !tx.select({ id: divisions.id }).from(divisions).where(and(eq(divisions.id, target.primaryDivisionId ?? ""), eq(divisions.isActive, true))).get()) {
+      throw new ValidationError("Divisi utama user harus aktif sebelum aktivasi");
+    }
+    const now = Date.now();
+    tx.update(users).set({ isActive, pendingApproval: isActive ? false : target.pendingApproval, updatedAt: now }).where(eq(users.id, userId)).run();
+    if (!isActive) tx.delete(sessions).where(eq(sessions.userId, userId)).run();
+    tx.insert(auditLogs).values({ id: randomUUID(), userId: currentActor.id, action: isActive ? "user.activated" : "user.deactivated", entityType: "user", entityId: userId, metaJson: JSON.stringify({ wasPendingApproval: target.pendingApproval }), createdAt: now }).run();
+  });
 }
 
 // ---------------------------------------------------------------------------

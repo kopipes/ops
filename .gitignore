@@ -1,5 +1,7 @@
 node_modules/
 .next/
+.next-preview/
+.next-e2e/
 out/
 data/
 uploads/

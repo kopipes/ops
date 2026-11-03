@@ -134,7 +134,7 @@ export function DivisionManager({
         </form>
       ) : null}
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
         {rows.map((d) => (
           <li
             key={d.id}

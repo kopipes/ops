@@ -103,6 +103,7 @@ describe("global settings (§12 /admin/settings)", () => {
   it("persists and reloads values", async () => {
     await saveGlobalSettings(db, admin, {
       ...DEFAULT_SETTINGS,
+      openingWindowEnabled: true,
       defaultOpeningWindowStart: "05:30",
       defaultOpeningWindowEnd: "10:00",
       defaultTimezone: "Asia/Makassar",
@@ -116,7 +117,7 @@ describe("global settings (§12 /admin/settings)", () => {
 
   it("rejects an invalid time format", async () => {
     await expect(
-      saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, defaultOpeningWindowStart: "25:00" }),
+      saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, openingWindowEnabled: true, defaultOpeningWindowStart: "25:00" }),
     ).rejects.toThrow(/Format jam/);
   });
 
@@ -124,6 +125,7 @@ describe("global settings (§12 /admin/settings)", () => {
     await expect(
       saveGlobalSettings(db, admin, {
         ...DEFAULT_SETTINGS,
+        openingWindowEnabled: true,
         defaultOpeningWindowStart: "12:00",
         defaultOpeningWindowEnd: "11:00",
       }),
@@ -150,5 +152,26 @@ describe("global settings (§12 /admin/settings)", () => {
     });
     const loaded = await getGlobalSettings(db);
     expect(loaded.defaultTimezone).toBe(DEFAULT_SETTINGS.defaultTimezone);
+  });
+
+  it("saves independent window switches and accepts empty disabled time fields", async () => {
+    await saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, openingWindowEnabled: false, closingWindowEnabled: true, defaultOpeningWindowStart: "", defaultOpeningWindowEnd: "" });
+    const loaded = await getGlobalSettings(db);
+    expect(loaded.openingWindowEnabled).toBe(false);
+    expect(loaded.closingWindowEnabled).toBe(true);
+    expect(loaded.defaultOpeningWindowStart).toBe(DEFAULT_SETTINGS.defaultOpeningWindowStart);
+    expect(loaded.defaultOpeningWindowEnd).toBe(DEFAULT_SETTINGS.defaultOpeningWindowEnd);
+  });
+
+  it("ignores incorrectly typed stored switches", async () => {
+    await db.insert(schema.appSettings).values({ key: "openingWindowEnabled", valueJson: '"false"', updatedAt: now });
+    expect((await getGlobalSettings(db)).openingWindowEnabled).toBe(false);
+  });
+
+  it("rolls back all settings if the audit write fails", async () => {
+    await saveGlobalSettings(db, admin, DEFAULT_SETTINGS);
+    sqlite.exec("CREATE TRIGGER fail_settings_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'audit failed'); END");
+    await expect(saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, openingWindowEnabled: true })).rejects.toThrow();
+    expect(await getGlobalSettings(db)).toEqual(DEFAULT_SETTINGS);
   });
 });

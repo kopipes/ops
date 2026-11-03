@@ -39,7 +39,30 @@ pnpm dev            # http://localhost:3000
 
 ### Akun demo
 
-Semua password: `OpsDemo2026!`
+Untuk preview yang lebih ringan, gunakan build produksi lokal terpisah dari dev:
+
+```bash
+NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next build
+NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next start -p 3112
+# http://localhost:3112 — tidak menunggu kompilasi halaman seperti next dev.
+```
+
+Data preview dapat dirapikan dengan `node --import tsx scripts/prepare-demo.ts`
+(dry-run), lalu tambahkan `--apply` untuk menerapkan. Script hanya menerima DB
+lokal `data/ops.db` dan membuat backup di `data/backups/`. Sesuai keputusan
+pengguna, preview dibatasi menjadi **5 project**: **2 Lengkap, 2 Sebagian,
+1 Belum Diisi**. Project lain disembunyikan dengan soft delete. Setiap demo
+memiliki anggota, 25 checklist, serta laporan/issue/review sesuai skenarionya;
+gambar berlabel **ILUSTRASI DEMO**. Rerun memvalidasi skenario dan tidak
+menggandakan atau menimpa laporan existing.
+
+Preview lokal menyimpan **5 user: Bob, Admin demo, Manager, Corporate, Crew**.
+Akun pengujian dibuang; crew lintas divisi digabungkan ke Crew dengan relasi
+tetap valid. Akun Bob beserta kredensial dan sesinya dipertahankan.
+
+Seed dasar untuk database baru/pengujian menyediakan lima akun berikut
+(password `OpsDemo2026!`). Preview lokal memakai Bob sebagai pengganti akun
+multi-divisi; password Bob tidak diubah.
 
 | Role | Email |
 |---|---|
@@ -49,6 +72,14 @@ Semua password: `OpsDemo2026!`
 | user (crew) | `crew@ops.test` |
 | user (multi-divisi) | `multi@ops.test` |
 
+Login menyediakan tautan **Daftar** (`/register`). Pendaftar memilih satu dari
+19 divisi dan selalu menjadi **User (Crew), nonaktif, menunggu aktivasi**.
+Admin dapat mengaktifkan semua akun melalui **User & aktivasi**; Manager hanya
+dapat mengaktifkan/nonaktifkan dan mengedit nama, email, serta telepon crew yang
+divisi utamanya dikelola Manager tersebut. Manager tidak dapat mengedit Admin,
+Corporate, Manager, role, divisi, atau password. Akun pending tidak mendapat
+sesi dan tidak dapat login; penonaktifan mencabut sesi yang sudah ada.
+
 ## Environment variables
 
 | Variabel | Wajib | Default | Catatan |
@@ -56,6 +87,7 @@ Semua password: `OpsDemo2026!`
 | `DATABASE_PATH` | – | `./data/ops.db` | Di produksi: di luar repo |
 | `UPLOADS_DIR` | – | `./uploads` | §10.1: pakai volume terpisah di produksi |
 | `SESSION_SECRET` | ✅ | – | `openssl rand -hex 32` |
+| `AUTH_CLIENT_IP_HEADER` | – | tidak dipercaya | Header IP tunggal yang ditimpa reverse proxy; port Next harus privat. Contoh `x-ops-client-ip` diisi proxy dari alamat koneksi, bukan header klien. Header forwarding lain diabaikan. |
 | `APP_URL` | – | `http://localhost:3000` | Untuk link absolut (PDF) |
 
 ## Perintah
@@ -64,14 +96,25 @@ Semua password: `OpsDemo2026!`
 pnpm dev            # dev server
 pnpm build && pnpm start   # produksi
 pnpm typecheck      # tsc --noEmit
-pnpm test           # Vitest (283 test)
-npx playwright test # E2E 57 test (server harus jalan di :3111)
+pnpm test           # Vitest (377 test)
+npx playwright test # otomatis menjalankan server/DB/uploads sementara di :3113
 
 pnpm db:generate    # buat migrasi baru setelah mengubah schema
 pnpm db:migrate     # terapkan migrasi
 pnpm db:seed        # seed data demo (idempotent)
 pnpm disk:check     # pemakaian disk & jumlah foto (§10.1)
 ```
+
+Playwright default memakai seed baru pada folder sementara dan `.next-e2e`,
+sehingga project/user hasil tes tidak masuk lagi ke database preview. Server
+dan folder sementara dibersihkan setelah selesai. `E2E_BASE_URL` adalah override
+eksplisit untuk server yang sudah berjalan; tes akan mengubah database server
+yang ditunjuk, jadi gunakan hanya server uji terpisah.
+
+Halaman **Project**, **Hari Ini**, dan **Issues** mencari otomatis saat mengetik
+(jeda 250 ms), tanpa tombol Submit. Issues juga mempunyai pilihan project yang
+bisa dicari berdasarkan nama/kode. Pencarian mempertahankan filter status dan
+severity, serta tetap dibatasi oleh hak akses server.
 
 ## Struktur
 
@@ -220,7 +263,9 @@ Aturan yang ditegakkan **di server**:
 - **Mark as Reviewed** hanya Manager divisi, Corporate, atau Admin. **Un-review** boleh oleh pihak yang sama tetapi **wajib alasan** dan tercatat di audit log (§13.1, Q14).
 - **Review mengunci edit laporan.** Setelah `reviewed_at` terisi, form crew menjadi read-only dengan penjelasan. Ada E2E yang membuktikan ini lintas role.
 - **Checklist %** dihitung dari hasil yang benar-benar dijawab hari itu, bukan dari checklist project saat ini — jadi persentase historis tidak berubah saat checklist diedit kemudian (§5.3 no.5).
-- **NOT_OK ditampilkan paling atas** dan disorot merah; item OK di-collapse (§7.2 no.2).
+- **Seluruh jawaban checklist tampil per laporan** (opening, setiap monitoring, closing), termasuk kategori dan catatan; NOT_OK paling atas dan disorot merah. Klik judul checklist untuk meringkas; tautan "Lihat seluruh checklist project" membuka daftar semua fase, termasuk item yang belum dijawab.
+- Klik thumbnail pada report, galeri, atau detail issue untuk membuka foto penuh di modal. Gunakan panah sebelumnya/berikutnya, keyboard ←/→, dan tutup lewat ×/Escape/backdrop. Gambar penuh baru dimuat saat modal dibuka.
+- Kartu severity dashboard dan hitungan issue terbuka dapat diklik. Critical adalah severity; Open → In Progress → Resolved → Closed adalah status penanganan. Status diperbarui di detail issue sesuai hak akses, dan dashboard/report ikut diperbarui.
 - **Komentar reviewer terlihat oleh crew** (bukan komentar internal — itu untuk mode klien di PDF, §7.5).
 - Filter `belum lengkap` / `ada issue High-Critical` / `belum direview` dihitung di server.
 
@@ -247,3 +292,8 @@ Halaman `/print/*` adalah route **terautentikasi biasa**: Chromium meneruskan co
 - Cookie sesi hanya menyimpan **hash** token, sehingga bocornya database tidak menghasilkan sesi yang bisa dipakai.
 - Reset password oleh Admin & penonaktifan user **langsung** membatalkan semua sesi aktif.
 - Pesan gagal login bersifat generik agar tidak membocorkan keberadaan email.
+- Registrasi email duplikat mendapat hasil publik yang sama, tanpa mengubah akun lama.
+- Rate limit registrasi: 5/15 menit per IP proxy terpercaya; tanpa konfigurasi
+  proxy, gunakan pool bersama 20/15 menit. Batas seluruh proses 100/15 menit,
+  dihitung sebelum hashing; cache dibatasi dan kedaluwarsa. Seperti login,
+  limiter in-memory harus dipindah ke penyimpanan bersama jika memakai beberapa proses.

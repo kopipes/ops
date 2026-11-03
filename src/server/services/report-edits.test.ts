@@ -224,6 +224,7 @@ describe("applyReportEdit (§9.5 no.4)", () => {
   });
 
   it("updates the live report", async () => {
+    const before = await getEditableReport(db, lead, reportId);
     await applyReportEdit(db, sqlite, lead, reportId, {
       notes: "diperbaiki",
       results: [
@@ -234,6 +235,9 @@ describe("applyReportEdit (§9.5 no.4)", () => {
 
     const loaded = await getEditableReport(db, lead, reportId);
     expect(loaded?.report.notes).toBe("diperbaiki");
+    expect(loaded?.report.submittedAt).toBe(before?.report.submittedAt);
+    expect(loaded?.report.submittedBy).toBe(before?.report.submittedBy);
+    expect(loaded?.report.timezone).toBe("Asia/Jakarta");
     expect(loaded?.report.results.find((r) => r.label === "Lampu")?.result).toBe("not_ok");
   });
 

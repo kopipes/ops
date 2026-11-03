@@ -47,13 +47,14 @@ export async function login(
       id: users.id,
       passwordHash: users.passwordHash,
       isActive: users.isActive,
+      pendingApproval: users.pendingApproval,
       mustChangePassword: users.mustChangePassword,
     })
     .from(users)
     .where(eq(users.email, email))
     .get();
 
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || user.pendingApproval) {
     // Still pay the hashing cost so timing does not disclose account existence.
     await verifyPassword(input.password, "scrypt$65536$8$1$AAAA$AAAA");
     recordFailedLogin(email, input.ip);

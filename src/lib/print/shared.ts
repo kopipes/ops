@@ -6,6 +6,8 @@
  * data. They use plain inline CSS so the PDF is stable without a CSS pipeline.
  */
 
+import { formatReportTimestamp } from "@/lib/datetime";
+
 export interface PrintOptions {
   /** §7.5: "sertakan foto" (ya/tidak). */
   includePhotos: boolean;
@@ -79,16 +81,7 @@ export function phaseLabel(phase: string): string {
 }
 
 export function formatDateTime(ms: number | null, timezone: string): string {
-  if (!ms) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: timezone,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(ms));
+  return formatReportTimestamp(ms, timezone);
 }
 
 export function formatTime(ms: number | null, timezone: string): string {

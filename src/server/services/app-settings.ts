@@ -15,6 +15,8 @@ import { ForbiddenError, ValidationError } from "./checklist-items";
 type DB = BetterSQLite3Database<typeof schema>;
 
 export interface GlobalSettings {
+  openingWindowEnabled: boolean;
+  closingWindowEnabled: boolean;
   defaultOpeningWindowStart: string;
   defaultOpeningWindowEnd: string;
   defaultClosingWindowStart: string;
@@ -23,6 +25,8 @@ export interface GlobalSettings {
 }
 
 export const DEFAULT_SETTINGS: GlobalSettings = {
+  openingWindowEnabled: false,
+  closingWindowEnabled: false,
   defaultOpeningWindowStart: "06:00",
   defaultOpeningWindowEnd: "11:00",
   defaultClosingWindowStart: "17:00",
@@ -43,7 +47,7 @@ export async function getGlobalSettings(db: DB): Promise<GlobalSettings> {
     if (raw !== undefined) {
       try {
         const parsed = JSON.parse(raw);
-        if (typeof parsed === "string") out[key] = parsed;
+        if (typeof parsed === typeof DEFAULT_SETTINGS[key]) Object.assign(out, { [key]: parsed });
       } catch {
         // A corrupt value falls back to the default rather than breaking the app.
       }
@@ -59,40 +63,50 @@ export async function saveGlobalSettings(
 ): Promise<void> {
   if (!canManageUsers(actor)) throw new ForbiddenError("Hanya Admin yang bisa mengubah setelan");
 
-  for (const key of [
-    "defaultOpeningWindowStart",
-    "defaultOpeningWindowEnd",
-    "defaultClosingWindowStart",
-    "defaultClosingWindowEnd",
-  ] as const) {
-    if (!TIME_RE.test(input[key])) throw new ValidationError(`Format jam tidak valid: ${input[key]}`);
-  }
-  if (input.defaultOpeningWindowStart >= input.defaultOpeningWindowEnd) {
-    throw new ValidationError("Window opening: jam mulai harus sebelum jam selesai");
-  }
-  if (input.defaultClosingWindowStart >= input.defaultClosingWindowEnd) {
-    throw new ValidationError("Window closing: jam mulai harus sebelum jam selesai");
+  const current = await getGlobalSettings(db);
+  const next = { ...input };
+  for (const phase of ["Opening", "Closing"] as const) {
+    const enabled = phase === "Opening" ? input.openingWindowEnabled : input.closingWindowEnabled;
+    if (typeof enabled !== "boolean") throw new ValidationError("Status window tidak valid");
+    const start = `default${phase}WindowStart` as const;
+    const end = `default${phase}WindowEnd` as const;
+    if (!enabled) {
+      // Disabled fields need no input; retain their previous values for re-enabling.
+      next[start] = current[start];
+      next[end] = current[end];
+      continue;
+    }
+    if (!TIME_RE.test(input[start]) || !TIME_RE.test(input[end])) {
+      throw new ValidationError("Format jam tidak valid");
+    }
+    if (input[start] >= input[end]) {
+      throw new ValidationError(`Window ${phase.toLowerCase()}: jam mulai harus sebelum jam selesai`);
+    }
   }
   if (!ALLOWED_TIMEZONES.includes(input.defaultTimezone)) {
     throw new ValidationError("Timezone tidak didukung");
   }
 
   const now = Date.now();
-  for (const [key, value] of Object.entries(input)) {
-    await db
-      .insert(appSettings)
-      .values({ key, valueJson: JSON.stringify(value), updatedAt: now })
-      .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: JSON.stringify(value), updatedAt: now } });
-  }
-
-  await db.insert(auditLogs).values({
+  db.transaction(tx => {
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof GlobalSettings)[]) {
+      const valueJson = JSON.stringify(next[key]);
+      tx.insert(appSettings).values({ key, valueJson, updatedAt: now })
+        .onConflictDoUpdate({ target: appSettings.key, set: { valueJson, updatedAt: now } }).run();
+    }
+    tx.insert(auditLogs).values({
     id: randomUUID(),
     userId: actor.id,
     action: "settings.updated",
     entityType: "app_settings",
     entityId: "global",
-    metaJson: JSON.stringify(input),
+    metaJson: JSON.stringify(next),
     ip: null,
     createdAt: now,
+    }).run();
   });
+}
+
+export function isWindowEnabled(phase: string, settings: Pick<GlobalSettings, "openingWindowEnabled" | "closingWindowEnabled">): boolean {
+  return phase === "opening" ? settings.openingWindowEnabled : phase === "closing" ? settings.closingWindowEnabled : false;
 }

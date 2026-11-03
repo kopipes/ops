@@ -32,6 +32,7 @@ import { validateResults, type CheckResultInput } from "./reports";
 type DB = BetterSQLite3Database<typeof schema>;
 
 export interface EditableReport {
+  timezone: string;
   id: string;
   phase: "opening" | "monitoring" | "closing";
   submittedAt: number | null;
@@ -129,6 +130,7 @@ export async function getEditableReport(
 
   return {
     report: {
+      timezone: project.timezone,
       id: row.id,
       phase: row.phase,
       submittedAt: row.submittedAt,

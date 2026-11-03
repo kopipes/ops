@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { today } from "./helpers";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
 const PHOTO = fileURLToPath(new URL("./fixtures/test-photo.jpg", import.meta.url));
 
@@ -165,7 +165,10 @@ test("editing an issue records a field diff", async ({ page }) => {
   const url = await createIssueViaUI(page, `Issue diff ${Date.now()}`);
 
   await page.goto(url);
-  await expect(page.getByText(/High/).first()).toBeVisible();
+  // Scope to the page body, not the whole document: the desktop sidebar has a
+  // shortcut literally named "Issue High/Critical", which a bare /High/ match
+  // would pick up while it is hidden at mobile width.
+  await expect(page.locator("main").getByText(/High/).first()).toBeVisible();
 
   // Status change produces a status diff entry; verify old -> new is rendered.
   await page.getByLabel("Status baru").selectOption("in_progress");

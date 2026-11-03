@@ -37,9 +37,9 @@ Stack: Next.js 15 (App Router) · TypeScript · Tailwind · SQLite (`better-sqli
 Last confirmed before handoff:
 
 - `tsc --noEmit` → **clean**
-- `vitest run` → **351 tests passing, 13 files**
+- `vitest run` → **376 tests passing, 15 files** (3 Nov registration follow-up)
 - `next build` → **succeeds**
-- Migrations: **3** (`0000`, `0001`, `0002`) — all applied to the local dev DB
+- Migrations: **4** (`0000`–`0003`) — all applied to the local dev DB
 - Routes: 29 pages (see §5)
 - E2E: **9 spec files, 66 tests — 66/66 green, verified twice back-to-back.**
 
@@ -134,6 +134,263 @@ row**.
 
 ---
 
+### 3.2 Desktop layout follow-up — 3 Nov 2026
+
+Resumed the interrupted VS Code desktop work. The working tree now includes the
+desktop sidebar, responsive card grids, report table, and sticky review/export
+rail; these changes are still **uncommitted**.
+
+Further fixes from browser inspection:
+- Report columns were clipped at 1024px by `overflow-hidden`; the table now has
+  a focusable horizontal scroll region and a minimum readable width.
+- Desktop project/admin/master tabs use one row. Project tabs previously retained
+  the mobile three-column grid and wrapped into two rows.
+- Day summary uses three columns on smaller desktops and six on wider screens;
+  dashboard stats similarly use three/six. Home/project cards stay single-column
+  while the shell is still using its mobile width.
+- `AppShell` accepts `contentWidth="form"` for project creation, issue creation,
+  report editing, account, and global settings, limiting desktop form width.
+- Wizard steps with the HTML `hidden` attribute were still displayed because
+  their Tailwind `flex` class overrode it. Inactive steps now use the `hidden`
+  utility while remaining mounted to preserve form values.
+
+Verified after these fixes: TypeScript clean; 15 pages checked at 390, 768, 1024,
+1280, and 1440px (75 page/viewport checks, zero failures); targeted project E2E
+3/3 passing (creation plus step visibility/back navigation on mobile and desktop).
+Two new wizard regression tests are in `e2e/projects.spec.ts`. Full E2E and
+production build have not been rerun for this follow-up.
+
+---
+
+### 3.3 Preview data and loading improvements — 3 Nov 2026
+
+- Local DB now has four visible projects: three labelled demo scenarios
+  (Lengkap / Sebagian / Belum Diisi) plus the user's original **Project Apalah**.
+  58 timestamp-named E2E projects were soft-deleted and audited; all their data
+  and uploads remain. Pre-change SQLite backup:
+  `data/backups/ops-before-demo-2026-11-03T04-59-05-184Z.db`.
+- `scripts/prepare-demo.ts` is a local-only, dry-run-by-default preparation tool;
+  apply with `node --import tsx scripts/prepare-demo.ts --apply`. Same-day runs
+  skip existing demo project codes. It supplies 25 checklist snapshots per demo,
+  members, report/checklist results, notes, handover, issue lifecycles/PICs,
+  review/comments, and explicitly labelled demo evidence illustrations.
+- Today: Lengkap has opening + two monitoring + closing, 100% OK, 16 photos,
+  one closed issue, reviewed. Sebagian has opening (late) + one monitoring,
+  83% OK, 13 photos, three non-closed issues, no closing/review. Belum Diisi
+  has no submitted reports, one pending vendor issue and its evidence image.
+- Home now batches days, reports, issues, and project facts rather than issuing
+  a separate set of queries for every project. Visibility/permission helpers
+  remain authoritative; no shared cache of authenticated data was added.
+- Project/account navigation uses Next Link; a loading boundary gives immediate
+  feedback. Report project-filter options now include only visible project IDs.
+- Realistic fixtures exposed a pre-existing report aggregation bug: open issue
+  counts/critical flags were shared across projects. Fixed and regression tested.
+  Review-window tests now freeze Date.now so they remain valid after H+1 noon.
+- Local browser measurements, including data reduction and code changes:
+  home 167–394 ms before, 45–88 ms afterward. Production preview measurements
+  across five pages: 36–120 ms, with TTFB 15–55 ms. These are local samples,
+  not a network/deployment performance guarantee.
+- Production preview runs at **http://localhost:3112**, independently of dev
+  at :3111. Build with `NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next build`;
+  start with `NEXT_DIST_DIR=.next-preview ./node_modules/.bin/next start -p 3112`.
+  Default production builds and Docker still use `.next`.
+- Final validation: production build succeeds; TypeScript clean; **352/352**
+  unit/integration tests; **50** browser checks across manager/crew/corporate
+  covering fixture content, image delivery, project issue counts, permissions,
+  and project navigation without a document reload. DB foreign keys and
+  quick_check pass. Full E2E was not rerun because it repopulates the preview DB
+  with test projects. All code changes remain uncommitted.
+
+---
+
+### 3.4 Windows disabled; report audit timestamps — 3 Nov 2026
+
+User explicitly clarified that Ops is not an attendance app. Both global
+`openingWindowEnabled` / `closingWindowEnabled` settings now default to false
+and are persisted false in the local DB. Switches live in `/admin/settings` and
+apply to all projects; no schema migration is needed (existing key/value table).
+Disabled time fields need no input; previous clock values are retained for
+optional re-enabling. Settings and their audit record save atomically.
+
+Without a window, opening/closing submit never sets lateness, unfilled forms/home
+show no overdue badge, wizard clock fields are hidden, project settings say
+"Nonaktif — bebas jam", and report cells say "Terisi / Belum diisi". Home has
+an explicit "Isi Closing" link for eligible crew so closing remains easy to
+reach without a clock-based primary CTA. Historical `is_late` values remain in
+the DB; lateness presentation is masked while the corresponding window is off.
+
+Submission time remains server-generated, separate from device/observation time.
+Report summary shows submitter plus seconds/timezone; crew read-only report,
+day detail, report-edit/history, and daily/recap PDFs show full date/time/seconds
+in the project timezone. Edit time/actor are separate for every phase, including
+monitoring and PDFs; tests assert edits preserve original submitter/submission
+time. The partial demo now includes an actual manager monitoring edit/revision
+to demonstrate the distinction. PRD §4.2, §6.1, §7 and §13.2 reflect this decision.
+
+Validation: production build and TypeScript pass, **360/360** unit/integration
+tests, one targeted settings/wizard E2E, and **29** production-browser checks
+including switches/save/reload, hidden wizard clock fields, Closing access,
+submitter/timestamps on desktop/mobile, edit markers, and daily/recap print.
+The browser also generated `/tmp/ops-demo-preview/report-no-window.pdf`.
+Reviewer findings (Closing discoverability, summary submitter, edit metadata)
+were addressed and checked. Production preview remains on :3112.
+
+---
+
+### 3.5 Photo modals, complete checklists, actionable Critical indicators — 3 Nov 2026
+
+- `components/reports/PhotoGallery.tsx` is reused in report sections, daily
+  galleries, report issue cards, issue detail, and issue update photos. Thumbnails
+  stay lazy; the authenticated full-image endpoint is requested only when opened.
+  Native dialog plus explicit Tab wrapping provides background inertness, focus
+  return, Escape/close/backdrop dismissal, previous/next buttons and arrow keys.
+- `ReportChecklist.tsx` shows every recorded answer initially, including OK,
+  N/A, category and notes; NOT_OK comes first. Each report's native details can
+  collapse the checklist. Monitoring no longer hides its OK answers. The day
+  header links to the complete project checklist (including unanswered items)
+  and the recorded report checklists.
+- Critical is severity, separate from status. Severity cards link to unclosed
+  issues for active projects; attention entries with an issue ID link directly
+  to that issue. Report/home issue counts also link to their project issue list.
+  Report issue cards show severity/status pills and a clear detail/action link.
+- Issue list supports `open=1` (Open/In Progress/Resolved, excludes Closed) and
+  `active=1` (matches dashboard's active-project scope). Existing role enforcement
+  for changes/closing remains unchanged; selecting indicators only navigates.
+  Status changes invalidate dashboard/report/project views as well as issue views.
+- Mobile report cards use independent report and issue links (no nested anchors).
+- Validation: **361** unit/integration tests pass; production build and TypeScript
+  pass; the targeted report E2E covers full checklist visibility, original image,
+  arrow navigation, Escape and focus return. **33** browser checks cover modal
+  controls/Tab/backdrop/mobile, all 25 project items, Critical links, current
+  issue status and manager/crew/corporate action visibility. Preview data remains
+  four projects; the single project created by targeted E2E was soft-deleted by
+  the demo cleanup tool after a new consistent SQLite backup.
+
+---
+
+### 3.6 Division catalog — 3 Nov 2026
+
+- Actual DB and idempotent seed now contain the user's exact 19 divisions:
+  Accounting, Creative, Event DeniHeidi, Event DesenDevy, Event Production,
+  Event Sports, Finance, FutureVast, HR-GA, NTOP, Operation, Premium, Retail,
+  Sacca Expo, Sacca Mall, Social Media, Starlight, Studios, Eats.
+- Existing IDs and relations retained: Event Operations → Event Production,
+  Site & Logistics → Operation, Creative & Production → Creative; unreferenced
+  sample division renamed Accounting. Seed matches by id/code/name to reuse it.
+- Backup: `data/backups/ops-before-divisions-2026-11-03T06-24-44-010Z.db`.
+  Catalog update audited; foreign keys clean. Browser verified 19 choices in
+  admin/project wizard, updated reports, and four visible preview projects.
+
+### 3.7 Public registration and scoped activation — 3 Nov 2026
+
+- Login links to `/register`. Server forces role=user, inactive, pending approval,
+  one active primary division, no session; injected privileges are ignored.
+  Login and every session lookup reject inactive OR pending accounts.
+- Migration `0003_registration_approval.sql` adds `users.pending_approval` with
+  false default, preserving existing accounts. Applied after consistent backup
+  `data/backups/ops-before-registration-2026-11-03T06-32-55-684Z.db`.
+- `/admin/users` plus sidebar/account links allow Admin or Manager. Admin retains
+  full administration; Manager sees only crew whose primary division is in the
+  Manager's current divisions, and can activate/deactivate/edit contacts only.
+  Corporate, Manager and Admin targets, roles, memberships, resets and creation
+  remain Admin-only. `canManageUsers` stays Admin-only to protect global settings.
+- Approval clears pending and audits actor/time; deactivation revokes sessions.
+  Manager writes re-read actor/target/memberships in synchronous transactions,
+  so stale forms cannot act on a newly promoted Admin or with revoked privileges.
+- Security review found spoofable forwarding headers and duplicate-email
+  disclosure; both fixed. Only explicit `AUTH_CLIENT_IP_HEADER` is trusted;
+  reverse proxy MUST overwrite it from connection IP and keep Next port private.
+  Otherwise forwarded headers are ignored and registration uses a shared
+  20/15min pool. Trusted IP limit 5/15min; global 100/15min before hashing;
+  registration map bounded/expired. Duplicate signup has same public result and
+  hashing cost as new signup, without changing an existing account.
+- Validation: TypeScript and production build pass; **376/376** unit/integration
+  tests pass. New browser spec `e2e/registration.spec.ts` passes on an isolated
+  SQLite backup (:3113): mobile form/no overflow, 19 division options, no signup
+  session, pending login denial, Manager scope, forged Admin target rejection,
+  approval/contact edits via in-app navigation, Admin approval outside Manager
+  scope, and revocation of a live crew session. Real sample accounts unchanged.
+  Preview with the real DB remains :3112; test server stopped after verification.
+
+---
+
+### 3.8 Settings checkbox reset regression — 3 Nov 2026
+
+- Reproduced the screenshot: load enabled windows, uncheck and save; database
+  correctly stores false and the free-time description appears, but React 19's
+  automatic action-form reset restores the original checked DOM state. A second
+  save could then accidentally enable the windows again. Times/timezone could
+  also revert to their initial DOM defaults.
+- `SettingsForm` explicitly handles submit, snapshots FormData, and dispatches
+  its action in `startTransition`. Preventing the submit's default action avoids
+  React's automatic form reset while preserving pending/error/success behavior.
+  Cancelling the reset event alone did not resolve the reproduced mismatch.
+- `e2e/settings.spec.ts` failed on the original build and now passes on an
+  isolated DB. Covers both switches, repeated save/reload, failed time validation,
+  re-enabling, edited clocks/timezone, and restores the original settings.
+  Production build/typecheck pass. Real DB retains both windows disabled; latest
+  preview remains :3112.
+
+---
+
+### 3.9 Exactly five preview projects/users, isolated E2E and live search — 3 Nov 2026
+
+- Preview had grown again because E2E defaults targeted the shared dev database:
+  123 visible projects and 28 accounts were found. After user authorization,
+  `prepare-demo.ts --apply` hides 120 non-curated projects, adds demos 4/5 and
+  leaves **five visible projects: two complete, two partial, one unfilled**.
+  Five users remain: **Bob, seed Admin, Manager, Corporate, Crew**, as explicitly
+  selected by the user. Bob's credentials/sessions are retained. Removed seed
+  multi-division crew references consolidate into crew; test memberships/sessions
+  are removed, nullable audit references cleared, historical snapshots retained.
+- Consistent backup before cleanup:
+  `data/backups/ops-before-demo-2026-11-03T13-54-05-864Z.db`.
+  All DB changes are transactional with exact count, role/activity, active-date,
+  full/partial/empty phase distribution and FK assertions. Same-day runs preserve
+  reports and fail if edited fixtures no longer match their promised scenario.
+  Counts and idempotency were verified on a disposable trial backup before apply.
+  Security/data integrity reviewer found no material blocker; scenario assertions
+  address the one residual rerun concern.
+- `playwright.config.ts` now starts `scripts/start-e2e.ts` on localhost :3113 by
+  default: new temporary seeded DB/uploads, separate `.next-e2e`, cleanup on exit.
+  All test fallback URLs updated to :3113. Explicit `E2E_BASE_URL` still overrides
+  this and deliberately targets that server; use only isolated test servers.
+- Shared `LiveSearchFilters.tsx` debounces URL query updates by 250ms, preserving
+  other filters and typed text during responses. Project/Home search name, code,
+  venue or client. Issues search title/code/description/project name/code before
+  the result limit. Project filter options are permission-scoped and searchable;
+  selection applies immediately, supports keyboard/Escape, and returns focus.
+  SQL substring searches are parameterized/literal, including quotes/%/_ input.
+- Validation: **377/377** unit/integration tests and production build/typecheck
+  pass. Default isolated auth E2E **6/6** pass; new live search E2E passes (project
+  name/code, missing/clear, Home rapid typing, issue search, project option search,
+  project/status/severity/query preservation, SQL-like input, mobile overflow).
+
+---
+
+### 3.10 Navigation latency measured and fixed — 3 Nov 2026
+
+- Local production HTML requests measured ~6–43ms. A DOM MutationObserver
+  timed real menu content changes at **304–315ms**: the global `app/loading.tsx`
+  immediately committed a skeleton and React's Suspense fallback throttle held
+  ready content for ~300ms. Playwright URL/lifecycle waits initially reported
+  ~800ms; use actual DOM timing when comparing perceived navigation latency.
+- Removed that global loading boundary. `NavigationLink` (desktop/mobile menus)
+  navigates in a transition, keeps the current screen visible, exposes a pending
+  spinner/accessible status on slow requests, and disables speculative menu
+  prefetch. Native modifier/target/download behavior is preserved. No cross-user
+  server data cache was introduced; server permissions remain enforced.
+- Post-fix production DOM measurements: Project **23/15ms**, Issues **32ms**
+  (repeat cached navigation 3ms), Report **70ms**, without skeleton flashes.
+- Browser also exposed service-worker registration failing because `/sw.js`
+  redirected unauthenticated visitors to login. Only the public static worker
+  and offline shell paths were added to the coarse middleware public list.
+- Production build/typecheck pass; **9/9** scoped browser tests pass (auth,
+  live search, desktop/mobile delayed navigation, keyboard and Back). Preview
+  remains :3112, still five visible projects/five users. Dev :3111 was untouched.
+
+---
+
 ## 4. Architectural rules — do not violate
 
 These were established deliberately and are enforced by tests. Breaking them re-introduces bugs already fixed.
@@ -205,7 +462,7 @@ e2e/                          auth, master-data, projects, crew, issues, reports
 
 - **`/projects/[id]/days/[date]`** page from §12 doesn't exist as such; day detail lives at `/reports/day/[id]`.
 - **Issue-edit UI** missing. `updateIssueFields` is implemented + tested, but no form to edit title/severity/PIC after creation.
-- **Photo lightbox / swipe** in day detail — thumbnails only.
+- **Photo touch-swipe** — modal viewing with previous/next buttons and keyboard is implemented; swipe gestures remain optional.
 - **Issue timeline inline** in day detail — issues link out to their own page.
 - **Project checklist editor UI** — the Checklist tab is read-only; `syncProjectChecklist` supports editing.
 - **Excel export**, watermark, full offline submit, issue analytics — phase 2.
@@ -217,16 +474,18 @@ e2e/                          auth, master-data, projects, crew, issues, reports
 
 ```bash
 ./node_modules/.bin/tsc --noEmit                  # must be clean
-./node_modules/.bin/vitest run                    # currently 351 passing
+./node_modules/.bin/vitest run                    # currently 377 passing
 ./node_modules/.bin/next build                    # routes must build
 
-# E2E (needs dev server on :3111 AND a seeded DB)
-./node_modules/.bin/next dev -p 3111
-./node_modules/.bin/playwright test               # full suite: 66 tests
+# E2E starts a disposable seeded server on :3113 automatically
+./node_modules/.bin/playwright test
 ./node_modules/.bin/playwright test e2e/pdf.spec.ts   # slow: launches Chromium
 ```
 
-**Note:** E2E mutates the dev DB and grows it (project codes are timestamp-derived to avoid unique clashes). If tests get slow or odd, reset:
+**Note:** Default E2E uses a disposable DB/uploads; it does not mutate preview.
+An explicit `E2E_BASE_URL` opts out and mutates that server's data. Never point it
+at the shared preview. The following destructive reset is only for a disposable
+development database, not the curated preview:
 ```bash
 rm -f data/ops.db* && ./node_modules/.bin/tsx src/server/db/migrate.ts && ./node_modules/.bin/tsx src/server/db/seed.ts
 ```

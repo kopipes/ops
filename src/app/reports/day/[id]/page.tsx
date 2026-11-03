@@ -10,53 +10,35 @@ import { dayCommentAction, markReviewedAction, unmarkReviewedAction } from "@/ap
 import { DayCommentForm } from "@/components/review/DayCommentForm";
 import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
 import { exportDailyPdfAction } from "@/app/pdf-actions";
+import { formatReportTimestamp } from "@/lib/datetime";
+import { PhotoGallery } from "@/components/reports/PhotoGallery";
+import { ReportChecklist } from "@/components/reports/ReportChecklist";
+import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
+import { issueStatusLabel, severityLabel } from "@/lib/schemas";
 
 export const metadata = { title: "Detail Hari — Ops" };
 
-const RESULT_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
-  not_ok: { bg: "#fee2e2", fg: "#991b1b", label: "Tidak OK" },
-  na: { bg: "#e2e8f0", fg: "#334155", label: "N/A" },
-  ok: { bg: "#dcfce7", fg: "#166534", label: "OK" },
-};
-
 function fmtTime(at: number | null, tz: string) {
   if (!at) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(at));
+  return formatReportTimestamp(at, tz);
 }
 
 function PhotoGrid({ photos }: { photos: GalleryPhoto[] }) {
-  if (photos.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {photos.map((p) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={p.id}
-          src={`/api/photos/${p.id}?v=thumb`}
-          alt={`Foto ${p.phase ?? ""}`}
-          className="h-16 w-16 rounded object-cover"
-          loading="lazy"
-        />
-      ))}
-    </div>
-  );
+  return <PhotoGallery photos={photos.map((photo, index) => ({
+    id: photo.id,
+    label: `Foto ${photo.phase ?? "laporan"} ${index + 1}`,
+    caption: photo.uploadedByName ? `Diunggah oleh ${photo.uploadedByName}` : undefined,
+  }))} />;
 }
 
 function ReportSection({
   title,
   block,
   tz,
-  collapsibleOk = false,
 }: {
   title: string;
   block: ReportBlock | null;
   tz: string;
-  collapsibleOk?: boolean;
 }) {
   if (!block) {
     return (
@@ -68,14 +50,12 @@ function ReportSection({
           className="rounded-lg border px-3 py-3 text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "#dc2626" }}
         >
-          Tidak diisi
+          Belum diisi
         </p>
       </section>
     );
   }
 
-  const anomalies = block.results.filter((r) => r.result !== "ok");
-  const oks = block.results.filter((r) => r.result === "ok");
 
   return (
     <section className="mb-4">
@@ -87,7 +67,7 @@ function ReportSection({
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
         <p className="text-xs" style={{ color: "var(--muted)" }}>
-          {block.submittedByName ?? "—"} · {fmtTime(block.submittedAt, tz)}
+          Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {fmtTime(block.submittedAt, tz)}
           {block.isLate ? (
             <span style={{ color: "#ea580c" }}> · terlambat</span>
           ) : null}
@@ -136,43 +116,7 @@ function ReportSection({
 
         {block.notes ? <p className="mt-1 text-sm whitespace-pre-wrap">{block.notes}</p> : null}
 
-        {/* §7.2: NOT_OK shown first and highlighted; OK collapsible. */}
-        {anomalies.length > 0 ? (
-          <ul className="mt-2 flex flex-col gap-1">
-            {anomalies.map((r) => (
-              <li
-                key={r.id}
-                className="rounded-md px-2 py-1.5 text-sm"
-                style={{ background: RESULT_STYLE[r.result].bg, color: RESULT_STYLE[r.result].fg }}
-              >
-                <span className="text-[11px]">{RESULT_STYLE[r.result].label}</span>
-                <p className="font-medium">{r.label}</p>
-                {r.note ? <p className="text-xs">{r.note}</p> : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {oks.length > 0 ? (
-          collapsibleOk ? (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs" style={{ color: "var(--muted)" }}>
-                {oks.length} item OK
-              </summary>
-              <ul className="mt-1 flex flex-col gap-0.5 text-xs" style={{ color: "var(--muted)" }}>
-                {oks.map((r) => (
-                  <li key={r.id}>✓ {r.label}</li>
-                ))}
-              </ul>
-            </details>
-          ) : (
-            <ul className="mt-2 flex flex-col gap-0.5 text-xs" style={{ color: "var(--muted)" }}>
-              {oks.map((r) => (
-                <li key={r.id}>✓ {r.label}</li>
-              ))}
-            </ul>
-          )
-        ) : null}
+        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} />
 
         <PhotoGrid photos={block.photos} />
       </div>
@@ -197,6 +141,10 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <AppShell>
+      {/* Desktop: content on the left, review + export pinned in a right rail so
+          a reviewer can read the day and act on it without scrolling to the end. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+      <div className="min-w-0">
       <header className="mb-4">
         <Link href="/reports" className="text-xs" style={{ color: "var(--muted)" }}>
           ← Report
@@ -209,7 +157,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
 
         {/* §7.2 no.1: headline numbers */}
         <dl
-          className="mt-2 grid grid-cols-3 gap-2 rounded-xl border px-3 py-2 text-center text-xs"
+          className="mt-2 grid grid-cols-3 gap-2 rounded-xl border px-3 py-2 text-center text-xs lg:mt-4 lg:px-5 lg:py-3 xl:grid-cols-6 xl:gap-4"
           style={{ borderColor: "var(--border)", background: "var(--surface)" }}
         >
           <div>
@@ -228,7 +176,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
               className="text-base font-semibold"
               style={{ color: detail.summary.issuesOpen > 0 ? "#dc2626" : undefined }}
             >
-              {detail.summary.issuesOpen}
+              <Link href={`/issues?projectId=${detail.project.id}&open=1`} aria-label={`Lihat ${detail.summary.issuesOpen} issue belum ditutup`}>{detail.summary.issuesOpen} ↗</Link>
             </dd>
           </div>
           <div>
@@ -244,6 +192,11 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
             <dd className="font-semibold">{detail.summary.issuesNew}</dd>
           </div>
         </dl>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <Link href={`/projects/${detail.project.id}?tab=checklist`} className="inline-flex min-h-tap items-center rounded-lg border px-3" style={{ borderColor: "var(--border)", color: "var(--accent)" }}>Lihat seluruh checklist project →</Link>
+          <a href="#report-checklists" className="inline-flex min-h-tap items-center rounded-lg border px-3" style={{ borderColor: "var(--border)", color: "var(--accent)" }}>Lihat checklist yang sudah diisi ↓</a>
+        </div>
+        <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Semua jawaban checklist ditampilkan per laporan di bawah. Klik judul checklist untuk meringkas. Klik foto untuk memperbesar.</p>
       </header>
 
       {detail.handoverFromPrevious ? (
@@ -258,7 +211,8 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
         </div>
       ) : null}
 
-      <ReportSection title="Opening" block={detail.opening} tz={tz} collapsibleOk />
+      <div id="report-checklists" className="scroll-mt-5" />
+      <ReportSection title="Opening" block={detail.opening} tz={tz} />
 
       {detail.monitoring.length > 0 ? (
         <section className="mb-4">
@@ -273,21 +227,11 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
                 style={{ borderColor: "var(--border)", background: "var(--surface)" }}
               >
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  {fmtTime(m.submittedAt, tz)} · {m.submittedByName ?? "—"}
+                  Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {fmtTime(m.submittedAt, tz)}
+                  {m.editLabel ? <span style={{ color: "#9a3412" }}> · Diedit oleh {m.editLabel.editedByName ?? "—"}, {fmtTime(m.editLabel.editedAt, tz)}</span> : null}
                 </p>
                 <p className="text-sm whitespace-pre-wrap">{m.notes}</p>
-                {m.results.filter((r) => r.result !== "ok").length > 0 ? (
-                  <ul className="mt-1 flex flex-col gap-0.5 text-xs" style={{ color: "#991b1b" }}>
-                    {m.results
-                      .filter((r) => r.result !== "ok")
-                      .map((r) => (
-                        <li key={r.id}>
-                          {RESULT_STYLE[r.result].label}: {r.label}
-                          {r.note ? ` — ${r.note}` : ""}
-                        </li>
-                      ))}
-                  </ul>
-                ) : null}
+                <ReportChecklist reportId={m.reportId} phase="Monitoring" results={m.results} />
                 <PhotoGrid photos={m.photos} />
               </li>
             ))}
@@ -295,7 +239,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
         </section>
       ) : null}
 
-      <ReportSection title="Closing" block={detail.closing} tz={tz} collapsibleOk />
+      <ReportSection title="Closing" block={detail.closing} tz={tz} />
 
       {detail.day.handoverNote ? (
         <div
@@ -324,9 +268,14 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
               >
                 <Link href={`/issues/${i.id}`} style={{ color: "var(--fg)" }}>
                   <p className="text-xs" style={{ color: "var(--muted)" }}>
-                    {i.code} · {i.severity} · {i.status}
+                    {i.code}
                   </p>
                   <p className="text-sm font-medium">{i.title}</p>
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    <Pill label={severityLabel[i.severity as keyof typeof severityLabel]} tone={SEVERITY_TONE[i.severity]} />
+                    <Pill label={issueStatusLabel[i.status as keyof typeof issueStatusLabel]} tone={STATUS_TONE[i.status]} />
+                  </span>
+                  <span className="mt-1 block text-xs" style={{ color: "var(--accent)" }}>Buka detail & tindak lanjut →</span>
                 </Link>
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   Next step: {i.nextStep}
@@ -334,20 +283,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   PIC: {i.picName ?? i.picExternal ?? "—"} · oleh {i.authorName} ({i.authorRole})
                 </p>
-                {i.photoIds.length > 0 ? (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {i.photoIds.map((pid) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={pid}
-                        src={`/api/photos/${pid}?v=thumb`}
-                        alt="Foto issue"
-                        className="h-14 w-14 rounded object-cover"
-                        loading="lazy"
-                      />
-                    ))}
-                  </div>
-                ) : null}
+                <PhotoGallery small photos={i.photoIds.map((id, index) => ({ id, label: `Foto issue ${i.code} ${index + 1}`, caption: i.title }))} />
               </li>
             ))}
           </ul>
@@ -375,6 +311,9 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
         </section>
       ) : null}
 
+      </div>{/* /main column */}
+
+      <aside className="lg:sticky lg:top-8 lg:flex lg:flex-col">
       {/* §7.5: PDF export */}
       {detail.canReview ? (
         <section className="mb-6">
@@ -395,8 +334,9 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
         </section>
       ) : null}
 
-      {/* §7.2 no.7: review panel */}
-      <section className="mb-6">
+      {/* §7.2 no.7: review panel. On desktop this is the primary action, so it
+          sits at the top of the rail (DOM order is kept for mobile). */}
+      <section className="mb-6 lg:order-first">
         <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
           Review
         </h2>
@@ -473,6 +413,8 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
           ) : null}
         </div>
       </section>
+      </aside>
+      </div>{/* /grid */}
     </AppShell>
   );
 }

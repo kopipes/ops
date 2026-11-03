@@ -504,6 +504,32 @@ describe("carry-over (§4.3 no.5)", () => {
 });
 
 describe("listIssues visibility", () => {
+  it("searches literal text and project identity inside the user's filtered scope", async () => {
+    const { issueId } = await createIssue(db, crew, issueInput({ title: "Lampu 100%_OK khusus" }));
+    const project = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+    for (const query of ["LAMPU 100%_OK", project!.name, project!.code]) {
+      expect((await listIssues(db, crew, [projectId], { query })).map(row => row.id)).toEqual([issueId]);
+    }
+    expect(await listIssues(db, crew, [projectId], { query: "missing" })).toEqual([]);
+    expect(await listIssues(db, crew, [projectId], { query: "' OR 1=1 --" })).toEqual([]);
+    expect(await listIssues(db, crew, [projectId], { query: "Lampu", severity: "low" })).toEqual([]);
+    expect(await listIssues(db, crew, [projectId], { query: "Lampu", projectId: "unavailable-project" })).toEqual([]);
+    expect(await listIssues(db, outsider, [], { query: "Lampu" })).toEqual([]);
+  });
+  it("the unclosed filter includes Open/In Progress/Resolved and excludes Closed", async () => {
+    for (const [index, status] of (["open", "in_progress", "resolved", "closed"] as const).entries()) {
+      const photoId = `filter-photo-${index}`;
+      await seedPhoto(photoId, crew.id);
+      const { issueId } = await createIssue(db, crew, issueInput({ photoIds: [photoId], severity: "critical" }));
+      if (status !== "open") await changeIssueStatus(db, mgr, issueId, status, "Fixture transition");
+    }
+    const rows = await listIssues(db, crew, [projectId], { excludeClosed: true, severity: "critical" });
+    expect(rows.map(row => row.status).sort()).toEqual(["in_progress", "open", "resolved"]);
+    expect(await listIssues(db, crew, [projectId], { excludeClosed: true, activeProjectsOnly: true })).toHaveLength(3);
+    await db.update(schema.projects).set({ status: "completed" }).where(eq(schema.projects.id, projectId));
+    expect(await listIssues(db, crew, [projectId], { excludeClosed: true, activeProjectsOnly: true })).toEqual([]);
+    expect(await listIssues(db, outsider, [], { excludeClosed: true })).toEqual([]);
+  });
   it("returns issues for visible projects only", async () => {
     const { issueId } = await createIssue(db, crew, issueInput());
     expect((await listIssues(db, crew, [projectId])).map((i) => i.id)).toContain(issueId);

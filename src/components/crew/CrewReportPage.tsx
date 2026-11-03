@@ -60,6 +60,8 @@ export async function CrewReportPage({
 
   return (
     <AppShell>
+      {/* A form is hard to scan at full desktop width — keep it to a readable column. */}
+      <div className="lg:max-w-3xl">
       <header className="mb-4">
         <Link
           href={`/projects/${projectId}?tab=today`}
@@ -93,6 +95,7 @@ export async function CrewReportPage({
         projectId={projectId}
         projectDayId={ctx.day.id}
         dayDate={ctx.day.date}
+        timezone={ctx.project.timezone}
         items={ctx.items}
         readOnly={readOnly}
         readOnlyReason={readOnlyReason}
@@ -102,7 +105,7 @@ export async function CrewReportPage({
                 reportId: ctx.existing.reportId,
                 submittedByName: ctx.existing.submittedByName,
                 submittedAt: ctx.existing.submittedAt,
-                isLate: ctx.existing.isLate,
+                isLate: ctx.existing.isLate && ctx.windowEnabled,
                 notes: ctx.existing.notes,
                 phaseNote: ctx.existing.phaseNote,
                 handoverNote: ctx.existing.handoverNote,
@@ -122,6 +125,7 @@ export async function CrewReportPage({
         carryOverIssues={ctx.carryOverIssues}
         handoverFromYesterday={ctx.handoverFromYesterday}
       />
+      </div>
     </AppShell>
   );
 }

@@ -1,9 +1,12 @@
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { projects } from "@/server/db/schema";
 import { visibleProjectIds } from "@/server/visibility";
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import { LiveSearchFilters } from "@/components/LiveSearchFilters";
+import { normalizeSearch, textSearch } from "@/server/search";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -12,7 +15,8 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Arsip",
 };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const query = normalizeSearch((await searchParams).q);
   const session = await requireUser();
   const db = getDb();
 
@@ -32,7 +36,7 @@ export default async function ProjectsPage() {
             endDate: projects.endDate,
           })
           .from(projects)
-          .where(and(inArray(projects.id, ids), isNull(projects.deletedAt)));
+          .where(and(inArray(projects.id, ids), isNull(projects.deletedAt), textSearch(query, projects.name, projects.code, projects.venue, projects.client)));
 
   const canCreate =
     session.user.isActive && (session.user.role === "admin" || session.user.role === "manager");
@@ -42,30 +46,31 @@ export default async function ProjectsPage() {
       <div className="mb-4 flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Project</h1>
         {canCreate ? (
-          <a
+          <Link
             href="/projects/new"
             className="min-h-[40px] rounded-lg px-3 text-sm font-medium leading-[40px] text-white"
             style={{ background: "var(--accent)" }}
           >
             + Project
-          </a>
+          </Link>
         ) : null}
       </div>
 
+      <LiveSearchFilters placeholder="Cari project, kode, venue, atau client" />
       {rows.length === 0 ? (
         <p
           className="rounded-xl border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
         >
-          Belum ada project.
+          {query ? "Project tidak ditemukan untuk pencarian ini." : "Belum ada project."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => (
-            <li key={p.id}>
-              <a
+            <li key={p.id} className="h-full">
+              <Link
                 href={`/projects/${p.id}`}
-                className="block rounded-xl border px-4 py-3"
+                className="block h-full rounded-xl border px-4 py-3"
                 style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
               >
               <div className="flex items-start justify-between gap-2">
@@ -86,7 +91,7 @@ export default async function ProjectsPage() {
               <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
                 {p.startDate} → {p.endDate}
               </p>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

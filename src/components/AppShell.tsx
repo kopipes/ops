@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { BottomNav, type Tab } from "@/components/BottomNav";
+import { SideNav } from "@/components/SideNav";
 import { currentSession, requireUser } from "@/server/auth/current-user";
 
 /** Icon paths (Feather-style, stroke-based). */
@@ -11,7 +12,13 @@ const ICONS = {
   user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
 } as const;
 
-export async function AppShell({ children }: { children: React.ReactNode }) {
+export async function AppShell({
+  children,
+  contentWidth = "wide",
+}: {
+  children: React.ReactNode;
+  contentWidth?: "wide" | "form";
+}) {
   const session = await requireUser();
 
   // §4.1: a reset account must set a new password before using the app.
@@ -29,8 +36,23 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <main className="flex-1 px-4 pt-5">{children}</main>
+    <div className="lg:flex lg:min-h-dvh">
+      <SideNav
+        tabs={tabs}
+        userName={session.name}
+        userRole={session.user.role}
+        canSeeReports={canSeeReports}
+      />
+
+      {/* Below lg the sidebar is hidden and the bottom bar is shown. The
+          content column keeps the mobile width on small screens and expands
+          to a comfortable reading width on desktop. */}
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+        <main className={`mx-auto w-full max-w-lg flex-1 px-4 pt-5 lg:px-8 lg:py-8 ${contentWidth === "form" ? "lg:max-w-3xl" : "lg:max-w-7xl"}`}>
+          {children}
+        </main>
+      </div>
+
       <BottomNav tabs={tabs} />
     </div>
   );

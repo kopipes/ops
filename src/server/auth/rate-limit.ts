@@ -14,6 +14,31 @@ interface Entry {
 }
 
 const attempts = new Map<string, Entry>();
+const registrations = new Map<string, Entry>();
+const MAX_REGISTRATION_KEYS = 1024;
+const GLOBAL_REGISTRATION_LIMIT = 100;
+const UNKNOWN_IP_REGISTRATION_LIMIT = 20;
+let globalRegistrations: Entry = { count: 0, firstAt: 0 };
+
+/** Reserve before password hashing so concurrent public signups share an IP budget. */
+export function takeRegistrationAttempt(ip: string, now = Date.now()): RateLimitResult {
+  for (const [key, entry] of registrations) {
+    if (now - entry.firstAt > WINDOW_MS) registrations.delete(key);
+  }
+  if (now - globalRegistrations.firstAt > WINDOW_MS) globalRegistrations = { count: 0, firstAt: now };
+  if (globalRegistrations.count >= GLOBAL_REGISTRATION_LIMIT || (!registrations.has(ip) && registrations.size >= MAX_REGISTRATION_KEYS)) {
+    return { allowed: false, retryAfterMs: Math.max(1, globalRegistrations.firstAt + WINDOW_MS - now), remaining: 0 };
+  }
+  const maxAttempts = ip === "unknown" ? UNKNOWN_IP_REGISTRATION_LIMIT : MAX_ATTEMPTS;
+  const entry = registrations.get(ip);
+  if (entry && now - entry.firstAt <= WINDOW_MS && entry.count >= maxAttempts) {
+    return { allowed: false, retryAfterMs: entry.firstAt + WINDOW_MS - now, remaining: 0 };
+  }
+  if (!entry || now - entry.firstAt > WINDOW_MS) registrations.set(ip, { count: 1, firstAt: now });
+  else entry.count++;
+  globalRegistrations.count++;
+  return { allowed: true, retryAfterMs: 0, remaining: maxAttempts - (registrations.get(ip)?.count ?? 0) };
+}
 
 const keyFor = (email: string, ip: string) => `${email.toLowerCase()}|${ip}`;
 
@@ -59,4 +84,6 @@ export function clearLoginAttempts(email: string, ip: string): void {
 /** Test hook. */
 export function _resetRateLimits(): void {
   attempts.clear();
+  registrations.clear();
+  globalRegistrations = { count: 0, firstAt: 0 };
 }

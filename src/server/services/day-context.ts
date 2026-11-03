@@ -20,6 +20,7 @@ import {
   type Phase,
 } from "./reports";
 import { listCarryOverIssues } from "./issues";
+import { getGlobalSettings } from "./app-settings";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -39,6 +40,7 @@ export interface DayPageContext {
     requiresPhoto: boolean;
   }[];
   overdue: boolean;
+  windowEnabled: boolean;
   carryOverIssues: { id: string; code: string; title: string; severity: string }[];
   handoverFromYesterday: string | null;
   monitoringCount: number;
@@ -65,6 +67,7 @@ export async function loadDayPageContext(
   const facts = await loadFacts(db, opts.projectId);
   const canView = canViewProject(user, facts);
   if (!canView) return null;
+  const settings = await getGlobalSettings(db);
 
   const canSubmit = canSubmitPhase(user, facts, opts.phase, day.assignedUserId);
 
@@ -138,7 +141,8 @@ export async function loadDayPageContext(
     canView,
     existing,
     items,
-    overdue: isPhaseOverdue(opts.phase, day.date, project, Date.now()),
+    overdue: isPhaseOverdue(opts.phase, day.date, project, Date.now(), settings),
+    windowEnabled: opts.phase === "opening" ? settings.openingWindowEnabled : opts.phase === "closing" ? settings.closingWindowEnabled : false,
     carryOverIssues: openIssues,
     handoverFromYesterday,
     monitoringCount: 0,

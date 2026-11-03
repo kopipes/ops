@@ -4,7 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 
 test.use({ viewport: { width: 390, height: 844 } }); // mobile (§9.1, §9.4)
 

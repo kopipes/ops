@@ -14,6 +14,7 @@ export interface UserRowView {
   divisionIds: string[];
   mustChangePassword: boolean;
   isActive: boolean;
+  pendingApproval: boolean;
   lastLoginAt: number | null;
 }
 
@@ -42,6 +43,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ActivationControl({ user, action }: { user: UserRowView; action: (prev: AdminActionState, formData: FormData) => Promise<AdminActionState> }) {
+  const [state, formAction, pending] = useActionState(action, {} as AdminActionState);
+  return <form action={formAction}>
+    <input type="hidden" name="id" value={user.id} />
+    <input type="hidden" name="isActive" value={user.isActive ? "0" : "1"} />
+    <button type="submit" disabled={pending} className="min-h-tap rounded-md border px-3 text-xs disabled:opacity-60" style={{ borderColor: "var(--border)", color: user.isActive ? "#dc2626" : "#166534" }}>{pending ? "Menyimpan…" : user.isActive ? "Nonaktifkan" : "Aktifkan"}</button>
+    {state.error ? <p role="alert" className="mt-1 text-xs" style={{ color: "#dc2626" }}>{state.error}</p> : null}
+  </form>;
+}
+
 export function UserManager({
   rows,
   divisions,
@@ -49,13 +60,15 @@ export function UserManager({
   resetAction,
   toggleAction,
   currentUserId,
+  canAdminister,
 }: {
   rows: UserRowView[];
   divisions: { id: string; name: string }[];
   saveAction: (prev: AdminActionState, formData: FormData) => Promise<AdminActionState>;
   resetAction: (prev: AdminActionState, formData: FormData) => Promise<AdminActionState>;
-  toggleAction: (formData: FormData) => Promise<void>;
+  toggleAction: (prev: AdminActionState, formData: FormData) => Promise<AdminActionState>;
   currentUserId: string;
+  canAdminister: boolean;
 }) {
   const [state, formAction, pending] = useActionState(saveAction, {} as AdminActionState);
   const [resetState, resetFormAction, resetPending] = useActionState(
@@ -67,6 +80,7 @@ export function UserManager({
   const [creating, setCreating] = useState(false);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showPending, setShowPending] = useState(false);
 
   const editing = rows.find((r) => r.id === editingId);
 
@@ -79,6 +93,7 @@ export function UserManager({
   }, [state.ok]);
 
   const visible = rows.filter((r) => {
+    if (showPending && !r.pendingApproval) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
@@ -90,7 +105,7 @@ export function UserManager({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">User</h1>
-        {!showForm ? (
+        {canAdminister && !showForm ? (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -110,6 +125,11 @@ export function UserManager({
         >
           <h2 className="text-base font-medium">{editing ? `Edit ${editing.name}` : "User baru"}</h2>
           {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+          {!canAdminister && editing ? <>
+            <input type="hidden" name="role" value={editing.role} />
+            <input type="hidden" name="primaryDivisionId" value={editing.primaryDivisionId ?? ""} />
+            {editing.divisionIds.filter(id => id !== editing.primaryDivisionId).map(id => <input key={id} type="hidden" name="additionalDivisionIds" value={id} />)}
+          </> : null}
 
           <Field label="Nama">
             <input
@@ -144,11 +164,12 @@ export function UserManager({
           <Field label="Role">
             <select
               name="role"
+              disabled={!canAdminister}
               defaultValue={editing?.role ?? "user"}
               className={inputCls}
               style={inputStyle}
             >
-              {ROLES.map((r) => (
+              {ROLES.filter(r => canAdminister || r.value === "user").map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
                 </option>
@@ -159,6 +180,7 @@ export function UserManager({
           <Field label="Divisi utama">
             <select
               name="primaryDivisionId"
+              disabled={!canAdminister}
               required
               defaultValue={editing?.primaryDivisionId ?? divisions[0]?.id ?? ""}
               className={inputCls}
@@ -172,7 +194,7 @@ export function UserManager({
             </select>
           </Field>
 
-          <fieldset className="flex flex-col gap-1">
+          <fieldset disabled={!canAdminister} className={canAdminister ? "flex flex-col gap-1" : "hidden"}>
             <legend className="text-sm" style={{ color: "var(--muted)" }}>
               Divisi tambahan (opsional)
             </legend>
@@ -246,7 +268,9 @@ export function UserManager({
         style={inputStyle}
       />
 
-      <ul className="flex flex-col gap-2">
+      <button type="button" aria-pressed={showPending} onClick={() => setShowPending(value => !value)} className="min-h-tap self-start rounded-lg border px-3 text-sm" style={{ borderColor: "var(--border)", background: showPending ? "var(--accent)" : "var(--surface)", color: showPending ? "#fff" : "var(--fg)" }}>Menunggu aktivasi ({rows.filter(user => user.pendingApproval).length})</button>
+
+      <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
         {visible.map((u) => (
           <li
             key={u.id}
@@ -254,7 +278,7 @@ export function UserManager({
             style={{
               borderColor: "var(--border)",
               background: "var(--surface)",
-              opacity: u.isActive ? 1 : 0.6,
+              opacity: u.isActive || u.pendingApproval ? 1 : 0.6,
             }}
           >
             <div className="flex items-start justify-between gap-2">
@@ -278,12 +302,12 @@ export function UserManager({
                 </p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
-                {!u.isActive ? (
+                {!u.isActive || u.pendingApproval ? (
                   <span
                     className="rounded-full px-2 py-0.5 text-[11px]"
                     style={{ background: "#e2e8f0", color: "#334155" }}
                   >
-                    Nonaktif
+                    {u.pendingApproval ? "Menunggu aktivasi" : "Nonaktif"}
                   </span>
                 ) : null}
                 {u.mustChangePassword ? (
@@ -310,31 +334,21 @@ export function UserManager({
                 Edit
               </button>
 
-              <button
+              {canAdminister ? <button
                 type="button"
                 onClick={() => setResettingId(resettingId === u.id ? null : u.id)}
                 className="min-h-[34px] rounded-md border px-3 text-xs"
                 style={{ borderColor: "var(--border)", color: "var(--fg)" }}
               >
                 Reset password
-              </button>
+              </button> : null}
 
               {u.id !== currentUserId ? (
-                <form action={toggleAction}>
-                  <input type="hidden" name="id" value={u.id} />
-                  <input type="hidden" name="isActive" value={u.isActive ? "0" : "1"} />
-                  <button
-                    type="submit"
-                    className="min-h-[34px] rounded-md border px-3 text-xs"
-                    style={{ borderColor: "var(--border)", color: u.isActive ? "#dc2626" : "#166534" }}
-                  >
-                    {u.isActive ? "Nonaktifkan" : "Aktifkan"}
-                  </button>
-                </form>
+                <ActivationControl user={u} action={toggleAction} />
               ) : null}
             </div>
 
-            {resettingId === u.id ? (
+            {canAdminister && resettingId === u.id ? (
               <form action={resetFormAction} className="mt-2 flex flex-col gap-2">
                 <input type="hidden" name="id" value={u.id} />
                 <input

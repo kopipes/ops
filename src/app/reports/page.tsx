@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc } from "drizzle-orm";
+import { asc, inArray } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
@@ -21,22 +21,26 @@ const STATUS_FILTERS = [
 
 function timeInZone(at: number | null, timeZone: string): string {
   if (!at) return "";
-  return new Intl.DateTimeFormat("en-GB", {
+  const parts = new Intl.DateTimeFormat("id-ID", {
     timeZone,
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
     hour12: false,
-  }).format(new Date(at));
+  }).formatToParts(new Date(at));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? "";
+  return `${part("hour")}:${part("minute")}:${part("second")} ${part("timeZoneName")}`;
 }
 
 /** §7.1: ✅ on time · 🟠 late · ❌ not filled */
-function PhaseCell({ value }: { value: { at: number | null; isLate: boolean } | null }) {
+function PhaseCell({ value, windowEnabled }: { value: { at: number | null; isLate: boolean } | null; windowEnabled: boolean }) {
   if (!value) {
-    return <span style={{ color: "#dc2626" }}>tidak diisi</span>;
+    return <span style={{ color: "var(--muted)" }}>Belum diisi</span>;
   }
   return (
-    <span style={{ color: value.isLate ? "#ea580c" : "#16a34a" }}>
-      {value.isLate ? "terlambat" : "tepat waktu"}
+    <span style={{ color: windowEnabled && value.isLate ? "#ea580c" : "#16a34a" }}>
+      {!windowEnabled ? "Terisi" : value.isLate ? "terlambat" : "tepat waktu"}
     </span>
   );
 }
@@ -91,6 +95,7 @@ export default async function ReportsPage({
     db
       .select({ id: projects.id, name: projects.name, timezone: projects.timezone })
       .from(projects)
+      .where(inArray(projects.id, ids))
       .orderBy(asc(projects.name)),
   ]);
 
@@ -112,9 +117,13 @@ export default async function ReportsPage({
       </div>
 
       {/* §7.1 filters */}
-      <form action="/reports" method="get" className="mb-3 flex flex-col gap-2">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--muted)" }}>
+      <form
+        action="/reports"
+        method="get"
+        className="mb-3 flex flex-col gap-2 lg:mb-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3"
+      >
+        <div className="grid grid-cols-2 gap-2 lg:contents">
+          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Dari
             <input
               type="date"
@@ -124,7 +133,7 @@ export default async function ReportsPage({
               style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--muted)" }}>
+          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Sampai
             <input
               type="date"
@@ -136,8 +145,8 @@ export default async function ReportsPage({
           </label>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--muted)" }}>
+        <div className="grid grid-cols-2 gap-2 lg:contents">
+          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Divisi
             <select
               name="divisionId"
@@ -153,7 +162,7 @@ export default async function ReportsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--muted)" }}>
+          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Project
             <select
               name="projectId"
@@ -210,14 +219,14 @@ export default async function ReportsPage({
           Tidak ada data untuk filter ini.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <>
+        <ul className="flex flex-col gap-2 lg:hidden">
           {rows.map((r) => {
             const project = projectRows.find((p) => p.id === r.projectId);
             const tone = r.hasCriticalOpen ? "#dc2626" : r.reviewedAt ? "#16a34a" : "var(--border)";
             return (
               <li key={`${r.projectId}-${r.date}`}>
-                <Link
-                  href={r.projectDayId ? `/reports/day/${r.projectDayId}` : "/reports"}
+                <div
                   className="block rounded-xl border px-4 py-3"
                   style={{
                     borderColor: tone,
@@ -228,7 +237,7 @@ export default async function ReportsPage({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium">{r.projectName}</p>
+                      <Link href={r.projectDayId ? `/reports/day/${r.projectDayId}` : "/reports"} className="font-medium" style={{ color: "var(--fg)" }}>{r.projectName}</Link>
                       <p className="text-xs" style={{ color: "var(--muted)" }}>
                         {r.date} · {r.divisionName}
                       </p>
@@ -242,15 +251,17 @@ export default async function ReportsPage({
                     <div className="flex justify-between gap-1">
                       <dt style={{ color: "var(--muted)" }}>Opening</dt>
                       <dd>
-                        <PhaseCell value={r.opening} />
+                        <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />
                         {r.opening?.at ? ` ${timeInZone(r.opening.at, project?.timezone ?? "Asia/Jakarta")}` : ""}
+                        {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}</span> : null}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-1">
                       <dt style={{ color: "var(--muted)" }}>Closing</dt>
                       <dd>
-                        <PhaseCell value={r.closing} />
+                        <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />
                         {r.closing?.at ? ` ${timeInZone(r.closing.at, project?.timezone ?? "Asia/Jakarta")}` : ""}
+                        {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}</span> : null}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-1">
@@ -264,7 +275,7 @@ export default async function ReportsPage({
                     <div className="flex justify-between gap-1">
                       <dt style={{ color: "var(--muted)" }}>Issue (baru/terbuka)</dt>
                       <dd style={{ color: r.hasCriticalOpen ? "#dc2626" : undefined }}>
-                        {r.issuesNew} / {r.issuesOpen}
+                        {r.issuesNew} / <Link href={`/issues?projectId=${r.projectId}&open=1`} className="underline underline-offset-2">{r.issuesOpen} ↗</Link>
                       </dd>
                     </div>
                     <div className="flex justify-between gap-1">
@@ -272,11 +283,106 @@ export default async function ReportsPage({
                       <dd>{r.photoCount}</dd>
                     </div>
                   </dl>
-                </Link>
+                  <Link href={r.projectDayId ? `/reports/day/${r.projectDayId}` : "/reports"} className="mt-2 flex min-h-tap items-center text-xs" style={{ color: "var(--accent)" }}>Lihat laporan & checklist →</Link>
+                </div>
               </li>
             );
           })}
         </ul>
+
+        {/* Desktop: one row per project-day, so many days can be compared at a
+            glance without scrolling a stack of cards. */}
+        <div
+          role="region"
+          aria-label="Report harian per project"
+          tabIndex={0}
+          className="hidden overflow-x-auto rounded-xl border lg:block"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        >
+          <table className="w-full min-w-[1024px] border-collapse text-sm">
+            <thead>
+              <tr style={{ background: "var(--bg)" }}>
+                {[
+                  "Project",
+                  "Tanggal",
+                  "Divisi",
+                  "Opening",
+                  "Closing",
+                  "Monitoring",
+                  "Checklist OK",
+                  "Issue (baru/terbuka)",
+                  "Foto",
+                  "Review",
+                ].map((h, i) => (
+                  <th
+                    key={h}
+                    scope="col"
+                    className={`px-3 py-2 text-left text-xs font-medium ${i >= 3 && i <= 8 ? "text-right" : ""}`}
+                    style={{ color: "var(--muted)" }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const project = projectRows.find((p) => p.id === r.projectId);
+                const tone = r.hasCriticalOpen ? "#dc2626" : r.reviewedAt ? "#16a34a" : "var(--border)";
+                return (
+                  <tr
+                    key={`${r.projectId}-${r.date}`}
+                    style={{ borderTop: `1px solid var(--border)`, borderLeft: `3px solid ${tone}` }}
+                  >
+                    <td className="px-3 py-1.5">
+                      <Link href={r.projectDayId ? `/reports/day/${r.projectDayId}` : "/reports"} className="font-medium" style={{ color: "var(--fg)" }}>
+                        {r.projectName}
+                      </Link>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-xs" style={{ color: "var(--muted)" }}>
+                      {r.date}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-xs" style={{ color: "var(--muted)" }}>
+                      {r.divisionName}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right text-xs">
+                      <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />
+                      {r.opening?.at ? (
+                        <span style={{ color: "var(--muted)" }}>
+                          {" "}
+                          {timeInZone(r.opening.at, project?.timezone ?? "Asia/Jakarta")}
+                        </span>
+                      ) : null}
+                      {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}</span> : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right text-xs">
+                      <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />
+                      {r.closing?.at ? (
+                        <span style={{ color: "var(--muted)" }}>
+                          {" "}
+                          {timeInZone(r.closing.at, project?.timezone ?? "Asia/Jakarta")}
+                        </span>
+                      ) : null}
+                      {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}</span> : null}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">{r.monitoringCount}</td>
+                    <td className="px-3 py-1.5 text-right">
+                      {r.checklistOkPct === null ? "—" : `${r.checklistOkPct}%`}
+                    </td>
+                    <td className="px-3 py-1.5 text-right" style={{ color: r.hasCriticalOpen ? "#dc2626" : undefined }}>
+                      {r.issuesNew} / <Link href={`/issues?projectId=${r.projectId}&open=1`} className="underline underline-offset-2" aria-label={`Lihat ${r.issuesOpen} issue belum ditutup ${r.projectName}`}>{r.issuesOpen}{r.hasCriticalOpen ? " ⚠" : ""} ↗</Link>
+                    </td>
+                    <td className="px-3 py-1.5 text-right">{r.photoCount}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-xs" style={{ color: r.reviewedAt ? "#16a34a" : "var(--muted)" }}>
+                      {r.reviewedAt ? "✓ reviewed" : "belum review"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        </>
       )}
     </AppShell>
   );

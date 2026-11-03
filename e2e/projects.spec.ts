@@ -3,8 +3,9 @@
  * Requires the seed (pnpm db:seed).
  */
 import { expect, test, type Page } from "@playwright/test";
+import { waitForHydration } from "./helpers";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3111";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
 
 /**
@@ -79,6 +80,33 @@ test("manager can create a project through the wizard", async ({ page }) => {
   await expect(tabs.getByRole("link", { name: "Hari ini" })).toBeVisible();
 });
 
+for (const width of [390, 1440]) {
+  test(`wizard shows only the current step at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await login(page, "manager@ops.test");
+    await page.goto(`${BASE}/projects/new`);
+    await waitForHydration(page, 'ol[aria-label="Langkah wizard"]');
+
+    const steps = page.locator("main form > section");
+    await expect(steps).toHaveCount(5);
+    await expect(page.locator("main form > section:visible")).toHaveCount(1);
+    await expect(steps.nth(0)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Simpan project" })).toBeHidden();
+
+    await page.getByLabel("Nama project").fill("Wizard layout check");
+    await page.getByLabel("Venue", { exact: true }).fill("JCC");
+    await page.getByRole("button", { name: "Lanjut →" }).click();
+    await expect(steps.nth(1)).toBeVisible();
+    await expect(steps.nth(0)).toBeHidden();
+    await expect(page.locator("main form > section:visible")).toHaveCount(1);
+
+    await page.getByRole("button", { name: "← Kembali" }).click();
+    await expect(steps.nth(0)).toBeVisible();
+    await expect(steps.nth(1)).toBeHidden();
+    await expect(page.getByLabel("Nama project")).toHaveValue("Wizard layout check");
+  });
+}
+
 test("project days are generated from the date range", async ({ page }) => {
   await login(page, "manager@ops.test");
   const url = await createProjectViaWizard(page, {
@@ -88,8 +116,9 @@ test("project days are generated from the date range", async ({ page }) => {
   });
 
   await page.goto(`${url}?tab=days`);
-  // The wizard defaults to a single day (today → today).
-  await expect(page.locator("li", { hasText: "hari ini" }).first()).toBeVisible();
+  // The wizard defaults to a single day (today → today). Scope to <main>: the
+  // desktop sidebar also has an "Hari Ini" item, which is hidden at this width.
+  await expect(page.locator("main li", { hasText: "hari ini" }).first()).toBeVisible();
 });
 
 test("checklist snapshot appears on the Checklist tab", async ({ page }) => {
@@ -128,7 +157,7 @@ test("lead promotion works on the Member tab", async ({ page }) => {
   await expect(page.getByText("lead", { exact: true }).first()).toBeVisible();
 });
 
-test("project settings show the configured windows", async ({ page }) => {
+test("project settings show windows disabled by default", async ({ page }) => {
   await login(page, "manager@ops.test");
   const url = await createProjectViaWizard(page, {
     name: `Settings Test ${Date.now()}`,
@@ -137,8 +166,7 @@ test("project settings show the configured windows", async ({ page }) => {
   });
 
   await page.goto(`${url}?tab=settings`);
-  await expect(page.getByText("06:00–11:00")).toBeVisible();
-  await expect(page.getByText("17:00–23:59")).toBeVisible();
+  await expect(page.getByText("Nonaktif — bebas jam", { exact: true })).toHaveCount(2);
 });
 
 test("crew cannot open the wizard (§12)", async ({ page }) => {

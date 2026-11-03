@@ -80,6 +80,7 @@ export async function getSession(db: DB): Promise<SessionContext | null> {
       email: users.email,
       role: users.role,
       isActive: users.isActive,
+      pendingApproval: users.pendingApproval,
       mustChangePassword: users.mustChangePassword,
     })
     .from(users)
@@ -87,7 +88,7 @@ export async function getSession(db: DB): Promise<SessionContext | null> {
     .get();
 
   // Deactivating a user must take effect immediately, even with a valid cookie.
-  if (!user || !user.isActive) return null;
+  if (!user || !user.isActive || user.pendingApproval) return null;
 
   const divisions = await db
     .select({ divisionId: userDivisions.divisionId })

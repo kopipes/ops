@@ -5,6 +5,7 @@ import { compressPhoto } from "@/lib/image-compression";
 import { clearDraft, draftKey, loadDraft, newSubmissionId, saveDraft } from "@/lib/drafts";
 import { enqueue, listJobs, processQueue, resumeQueue } from "@/lib/upload-queue";
 import type { ReportFormActionState } from "@/app/report-actions";
+import { formatReportTimestamp } from "@/lib/datetime";
 
 export interface ChecklistItemView {
   id: string;
@@ -40,6 +41,7 @@ interface Props {
   projectId: string;
   projectDayId: string;
   dayDate: string;
+  timezone: string;
   items: ChecklistItemView[];
   readOnly: boolean;
   readOnlyReason?: string;
@@ -70,6 +72,7 @@ export function ReportForm({
   projectId,
   projectDayId,
   dayDate,
+  timezone,
   items,
   readOnly,
   readOnlyReason,
@@ -307,9 +310,9 @@ export function ReportForm({
           </p>
           {existing ? (
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              oleh {existing.submittedByName ?? "—"}
+              Diisi oleh {existing.submittedByName ?? "—"}
               {existing.submittedAt
-                ? ` · ${new Date(existing.submittedAt).toLocaleString("id-ID")}`
+                ? ` · Waktu pengisian: ${formatReportTimestamp(existing.submittedAt, timezone)}`
                 : ""}
             </p>
           ) : null}

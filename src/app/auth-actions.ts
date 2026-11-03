@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getDb } from "@/server/db";
 import { changeOwnPassword, login, logout } from "@/server/auth";
 import { SESSION_COOKIE, cookieOptions, getSession } from "@/server/auth/session";
+import { registerAccount } from "@/server/auth/register";
+import { clientIp } from "@/server/auth/client-ip";
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, "Email wajib diisi").email("Format email tidak valid"),
@@ -16,12 +18,19 @@ export interface FormState {
   error?: string;
 }
 
-function clientIp(h: Awaited<ReturnType<typeof headers>>): string {
-  return (
-    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    h.get("x-real-ip") ??
-    "unknown"
-  );
+export async function registerAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  if (formData.get("password") !== formData.get("confirmPassword")) return { error: "Konfirmasi password tidak cocok" };
+  let result;
+  try {
+    result = await registerAccount(getDb(), {
+      name: formData.get("name"), email: formData.get("email"), phone: formData.get("phone") ?? "",
+      primaryDivisionId: formData.get("primaryDivisionId"), password: formData.get("password"),
+    }, clientIp(await headers()));
+  } catch {
+    return { error: "Pendaftaran belum berhasil. Silakan coba lagi." };
+  }
+  if (!result.ok) return { error: result.error };
+  redirect("/login?registered=1");
 }
 
 export async function loginAction(_prev: FormState, formData: FormData): Promise<FormState> {
