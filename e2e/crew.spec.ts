@@ -202,4 +202,15 @@ test("draft survives a reload (§4.3 no.8)", async ({ page }) => {
 
   await expect(page.getByText("Draft dipulihkan dari perangkat ini.")).toBeVisible();
   await expect(page.getByLabel(/Catatan umum/)).toHaveValue("Draft note E2E");
+
+  /*
+   * Regression: the autosave used to coerce unanswered items to "ok", so a
+   * restored draft came back "answered but photoless" and submit failed with
+   * "Foto wajib untuk item: …" on a form that looked completely filled in.
+   * Only the one item the crew actually answered must be restored.
+   */
+  const answered = await page.$$eval("li button[aria-pressed]", (els) =>
+    els.filter((e) => e.getAttribute("aria-pressed") === "true").length,
+  );
+  expect(answered).toBe(1);
 });

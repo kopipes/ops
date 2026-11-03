@@ -146,12 +146,20 @@ export function ReportForm({
         notes,
         phaseNote,
         observedAt: Date.now(),
-        results: Object.entries(answers).map(([id, a]) => ({
-          projectChecklistItemId: id,
-          result: a.result ?? "ok",
-          note: a.note,
-          photoIds: a.photoIds,
-        })),
+        /*
+         * Persist only items the crew actually answered. Coercing an unanswered
+         * item to "ok" made the draft restore it as answered-but-photoless, so
+         * submit then failed with "Foto wajib untuk item: …" for a form that
+         * looked completely filled in.
+         */
+        results: Object.entries(answers)
+          .filter(([, a]) => a.result !== null)
+          .map(([id, a]) => ({
+            projectChecklistItemId: id,
+            result: a.result as "ok" | "not_ok" | "na",
+            note: a.note,
+            photoIds: a.photoIds,
+          })),
         photoIds: generalPhotoIds,
         handoverNote: phase === "closing" ? handoverNote : undefined,
         clientSubmissionId: submissionIdRef.current,
