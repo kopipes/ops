@@ -1,6 +1,7 @@
 import { AuthForm, Field } from "@/components/AuthForm";
 import { changePasswordAction } from "@/app/auth-actions";
 import { requireUser } from "@/server/auth/current-user";
+import { AuthLayout } from "@/components/AuthLayout";
 
 export const metadata = { title: "Ganti Password — Ops" };
 
@@ -8,8 +9,9 @@ export default async function ChangePasswordPage() {
   const session = await requireUser();
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-5">
-      <h1 className="mb-1 text-xl font-semibold">Ganti Password</h1>
+    <AuthLayout>
+      <p className="eyebrow mb-3">KEAMANAN AKUN</p>
+      <h1 className="mb-3 text-[30px] font-semibold tracking-[-0.04em]">Ganti Password</h1>
       <p className="mb-6 text-sm" style={{ color: "var(--muted)" }}>
         {session.mustChangePassword
           ? "Password kamu baru direset oleh Admin. Buat password baru untuk melanjutkan."
@@ -36,6 +38,6 @@ export default async function ChangePasswordPage() {
           autoComplete="new-password"
         />
       </AuthForm>
-    </div>
+    </AuthLayout>
   );
 }

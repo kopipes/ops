@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Icon } from "@/components/ui/WorkspaceUI";
 
 export interface ProjectSearchOption { id: string; code: string; name: string }
 
@@ -18,6 +19,7 @@ export function LiveSearchFilters({ placeholder, projects }: { placeholder: stri
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const pickerButton = useRef<HTMLButtonElement>(null);
+  const picker = useRef<HTMLDivElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const selected = projects?.find(project => project.id === params.get("projectId"));
 
@@ -27,6 +29,14 @@ export function LiveSearchFilters({ placeholder, projects }: { placeholder: stri
   }, [currentQuery]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   useEffect(() => { if (pickerOpen) projectInput.current?.focus(); }, [pickerOpen]);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !picker.current?.contains(event.target)) setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [pickerOpen]);
 
   function navigate(value: string, projectId?: string) {
     if (timer.current) clearTimeout(timer.current);
@@ -48,21 +58,27 @@ export function LiveSearchFilters({ placeholder, projects }: { placeholder: stri
 
   const matches = projects?.filter(project => `${project.name} ${project.code}`.toLocaleLowerCase("id-ID").includes(projectSearch.trim().toLocaleLowerCase("id-ID")));
 
-  return <div className="mb-4 flex flex-col gap-2" aria-busy={pending}>
-    <label className="flex flex-col gap-1 text-sm">
-      <span style={{ color: "var(--muted)" }}>{placeholder}</span>
+  return <div className="search-toolbar" aria-busy={pending}>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+    <label className="relative block min-w-0 flex-1 text-sm">
+      <span className="sr-only">{placeholder}</span>
+      <span className="pointer-events-none absolute left-4 top-[15px] text-[var(--muted)]"><Icon name="search" size={18} /></span>
       <input ref={input} type="search" value={query} maxLength={120} placeholder={placeholder} onChange={event => {
         const value = event.target.value;
         setQuery(value);
         if (timer.current) clearTimeout(timer.current);
         if (!value) navigate(""); else timer.current = setTimeout(() => navigate(value), 250);
-      }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); navigate(query); } }} className="min-h-tap w-full rounded-lg border px-3 py-2 text-base" style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }} />
+      }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); navigate(query); } }} className="search-input !text-base sm:!text-sm" />
     </label>
-    {projects ? <div>
-      <button ref={pickerButton} type="button" aria-expanded={pickerOpen} aria-controls="project-search-options" onClick={() => setPickerOpen(value => !value)} className="flex min-h-tap w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm sm:max-w-lg" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-        <span>Filter project: {selected?.name ?? "Semua project"}</span><span aria-hidden="true">▾</span>
+    {projects ? <div ref={picker} className="relative sm:w-64 sm:shrink-0" onBlur={event => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPickerOpen(false);
+    }} onKeyDown={event => {
+      if (event.key === "Escape") { setPickerOpen(false); pickerButton.current?.focus(); }
+    }}>
+      <button ref={pickerButton} type="button" aria-expanded={pickerOpen} aria-controls="project-search-options" onClick={() => setPickerOpen(value => !value)} className="flex min-h-[48px] w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+        <Icon name="folder" size={16} /><span className="min-w-0 flex-1 truncate">Filter project: {selected?.name ?? "Semua project"}</span><span aria-hidden="true">▾</span>
       </button>
-      {pickerOpen ? <div id="project-search-options" className="mt-2 rounded-lg border p-2 sm:max-w-lg" style={{ background: "var(--surface)", borderColor: "var(--border)" }} onKeyDown={event => { if (event.key === "Escape") { setPickerOpen(false); pickerButton.current?.focus(); } }}>
+      {pickerOpen ? <div id="project-search-options" className="surface-card absolute right-0 top-full z-20 mt-2 w-full min-w-[256px] p-2 shadow-xl">
         <input ref={projectInput} type="search" aria-label="Cari pilihan project" placeholder="Cari nama atau kode project…" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} className="mb-2 min-h-tap w-full rounded-lg border px-3 text-base" style={{ borderColor: "var(--border)", background: "var(--bg)" }} />
         <div className="flex max-h-64 flex-col gap-1 overflow-y-auto" role="group" aria-label="Pilihan project">
           <button type="button" onClick={() => selectProject("")} aria-pressed={!params.get("projectId")} className="min-h-tap rounded-md px-3 py-2 text-left text-sm">Semua project</button>
@@ -71,6 +87,7 @@ export function LiveSearchFilters({ placeholder, projects }: { placeholder: stri
         </div>
       </div> : null}
     </div> : null}
-    <p role="status" className="min-h-4 text-xs" style={{ color: "var(--muted)" }}>{pending || query.trim() !== currentQuery ? "Mencari…" : "Hasil diperbarui otomatis saat mengetik."}</p>
+    </div>
+    <p role="status" className="mt-2 min-h-4 text-[10px]" style={{ color: "var(--muted)" }}>{pending || query.trim() !== currentQuery ? "Mencari…" : "Hasil diperbarui otomatis saat mengetik."}</p>
   </div>;
 }

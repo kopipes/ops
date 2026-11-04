@@ -11,7 +11,7 @@
  * It NEVER caches: HTML pages, API responses, or photos — those must always hit
  * the server so permissions and fresh data are respected.
  */
-const VERSION = "ops-v1";
+const VERSION = "ops-v2";
 const SHELL = `${VERSION}-shell`;
 const SHELL_ASSETS = ["/icon.svg", "/manifest.webmanifest", "/offline.html"];
 

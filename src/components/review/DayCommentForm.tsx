@@ -41,7 +41,7 @@ export function DayCommentForm({
         type="submit"
         disabled={pending}
         className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        style={{ background: "var(--accent-solid)" }}
       >
         {pending ? "Mengirim…" : "Kirim komentar"}
       </button>

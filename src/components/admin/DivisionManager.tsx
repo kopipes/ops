@@ -51,7 +51,7 @@ export function DivisionManager({
             type="button"
             onClick={() => setCreating(true)}
             className="min-h-[40px] rounded-lg px-3 text-sm font-medium text-white"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             + Divisi
           </button>
@@ -115,7 +115,7 @@ export function DivisionManager({
               type="submit"
               disabled={pending}
               className="min-h-tap flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--accent-solid)" }}
             >
               {pending ? "Menyimpan…" : editing ? "Simpan perubahan" : "Buat divisi"}
             </button>

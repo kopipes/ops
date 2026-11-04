@@ -114,7 +114,7 @@ export default async function AdminAuditPage({
         <button
           type="submit"
           className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-          style={{ background: "var(--accent)" }}
+          style={{ background: "var(--accent-solid)" }}
         >
           Terapkan filter
         </button>

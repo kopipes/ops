@@ -26,7 +26,7 @@ export function AdminNav({
           aria-current={l.key === active ? "page" : undefined}
           className="flex min-h-[40px] items-center justify-center rounded-md px-3 text-center text-sm"
           style={{
-            background: l.key === active ? "var(--accent)" : "transparent",
+            background: l.key === active ? "var(--accent-solid)" : "transparent",
             color: l.key === active ? "#fff" : "var(--muted)",
           }}
         >

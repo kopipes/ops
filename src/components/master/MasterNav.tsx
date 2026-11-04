@@ -32,7 +32,7 @@ export function MasterNav({
             aria-current={isActive ? "page" : undefined}
             className="flex min-h-[40px] items-center justify-center rounded-md px-3 text-center text-sm"
             style={{
-              background: isActive ? "var(--accent)" : "transparent",
+              background: isActive ? "var(--accent-solid)" : "transparent",
               color: isActive ? "#fff" : "var(--muted)",
             }}
           >

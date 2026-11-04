@@ -380,7 +380,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
               <button
                 type="submit"
                 className="min-h-tap w-full rounded-lg px-4 py-3 text-base font-medium text-white"
-                style={{ background: "var(--accent)" }}
+                style={{ background: "var(--accent-solid)" }}
               >
                 Mark as Reviewed
               </button>

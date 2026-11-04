@@ -26,8 +26,7 @@ export function AuthForm({ action, submitLabel, children }: Props) {
       <button
         type="submit"
         disabled={pending}
-        className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        className="btn-primary mt-2 min-h-[48px] w-full disabled:cursor-wait disabled:opacity-60"
       >
         {pending ? "Memproses…" : submitLabel}
       </button>
@@ -56,8 +55,8 @@ export function Field({
 }) {
   const id = `f-${name}`;
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm" style={{ color: "var(--muted)" }}>
+    <div className="flex flex-col gap-2">
+      <label htmlFor={id} className="text-xs font-medium">
         {label}
       </label>
       <input
@@ -69,7 +68,7 @@ export function Field({
         required={required}
         minLength={minLength}
         maxLength={maxLength}
-        className="min-h-tap rounded-lg border px-3 py-3 text-base outline-none focus:ring-2"
+        className="min-h-[48px] rounded-xl border px-3.5 py-3 text-base sm:text-sm"
         style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
       />
     </div>

@@ -328,7 +328,7 @@ export function IssueForm({
         type="submit"
         disabled={pending || uploading > 0}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        style={{ background: "var(--accent-solid)" }}
       >
         {pending ? "Menyimpan…" : submitLabel}
       </button>

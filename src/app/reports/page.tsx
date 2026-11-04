@@ -9,6 +9,7 @@ import { visibleProjectIds } from "@/server/visibility";
 import { isAdmin, isCorporate, isManager } from "@/server/permissions";
 import { getGlobalSettings } from "@/server/services/app-settings";
 import { toLocalDate } from "@/lib/datetime";
+import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
 export const metadata = { title: "Report — Ops" };
 
@@ -109,18 +110,19 @@ export default async function ReportsPage({
 
   return (
     <AppShell>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Report Harian</h1>
-        <Link href="/dashboard" className="text-xs" style={{ color: "var(--accent)" }}>
-          Dashboard →
-        </Link>
+      <PageHeader eyebrow="REPORTS & INSIGHTS" title="Report Harian" description="Tinjau kelengkapan laporan dan progres setiap project, setiap hari." action={<Link href="/dashboard" className="btn-secondary">Dashboard<Icon name="arrow" size={16} /></Link>} />
+      <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard label="Laporan harian" value={rows.length} icon="layers" hint="Sesuai periode dan filter" />
+        <MetricCard label="Opening & closing terisi" value={rows.filter(r => r.opening && r.closing).length} icon="check" tone="success" hint="Kedua laporan tersedia" />
+        <MetricCard label="Belum direview" value={rows.filter(r => !r.reviewedAt).length} icon="clock" tone="neutral" hint="Menunggu pemeriksaan" />
+        <MetricCard label="Perlu perhatian" value={rows.filter(r => r.hasCriticalOpen).length} icon="alert" tone="warning" hint="Memiliki issue High / Critical" />
       </div>
 
       {/* §7.1 filters */}
       <form
         action="/reports"
         method="get"
-        className="mb-3 flex flex-col gap-2 lg:mb-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3"
+        className="surface-card mb-4 flex flex-col gap-3 p-4 lg:flex-row lg:flex-wrap lg:items-end"
       >
         <div className="grid grid-cols-2 gap-2 lg:contents">
           <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
@@ -183,8 +185,7 @@ export default async function ReportsPage({
         <input type="hidden" name="status" value={params.status ?? "all"} />
         <button
           type="submit"
-          className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-          style={{ background: "var(--accent)" }}
+          className="btn-primary"
         >
           Terapkan filter
         </button>
@@ -201,7 +202,7 @@ export default async function ReportsPage({
               className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]"
               style={{
                 borderColor: "var(--border)",
-                background: active ? "var(--accent)" : "var(--surface)",
+                background: active ? "var(--accent-solid)" : "var(--surface)",
                 color: active ? "#fff" : "var(--muted)",
               }}
             >

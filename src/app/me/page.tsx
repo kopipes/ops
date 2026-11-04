@@ -5,6 +5,7 @@ import { logoutAction } from "@/app/auth-actions";
 import { getDb } from "@/server/db";
 import { divisions } from "@/server/db/schema";
 import { inArray } from "drizzle-orm";
+import { Icon, PageHeader } from "@/components/ui/WorkspaceUI";
 
 export default async function AccountPage() {
   const session = await requireUser();
@@ -20,25 +21,27 @@ export default async function AccountPage() {
 
   return (
     <AppShell contentWidth="form">
-      <h1 className="mb-4 text-xl font-semibold">Akun</h1>
+      <PageHeader eyebrow="YOUR PROFILE" title="Akun" description="Profil, akses workspace, dan pengaturan akun Anda." />
+
+      <div className="surface-card mb-5 flex items-center gap-4 p-5"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-lg font-semibold text-[var(--accent)]" aria-hidden="true">{session.name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase()}</span><div className="min-w-0"><p className="break-words text-lg font-semibold tracking-tight">{session.name}</p><span className="status-badge tone-accent mt-1 capitalize">{session.user.role}</span></div><span className="ml-auto text-[var(--muted)]"><Icon name="shield" size={24} /></span></div>
 
       <dl
         className="mb-6 rounded-xl border px-4 py-3 text-sm"
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
-        <div className="flex justify-between py-1">
+        <div className="flex justify-between gap-4 py-2">
           <dt style={{ color: "var(--muted)" }}>Nama</dt>
           <dd>{session.name}</dd>
         </div>
-        <div className="flex justify-between py-1">
+        <div className="flex justify-between gap-4 border-t border-[var(--border)] py-2">
           <dt style={{ color: "var(--muted)" }}>Email</dt>
-          <dd>{session.email}</dd>
+          <dd className="min-w-0 break-all text-right">{session.email}</dd>
         </div>
-        <div className="flex justify-between py-1">
+        <div className="flex justify-between gap-4 border-t border-[var(--border)] py-2">
           <dt style={{ color: "var(--muted)" }}>Role</dt>
           <dd>{session.user.role}</dd>
         </div>
-        <div className="flex justify-between gap-4 py-1">
+        <div className="flex justify-between gap-4 border-t border-[var(--border)] py-2">
           <dt className="shrink-0" style={{ color: "var(--muted)" }}>
             Divisi
           </dt>

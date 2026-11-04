@@ -161,7 +161,7 @@ export function EditReportForm({
         type="submit"
         disabled={pending}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        style={{ background: "var(--accent-solid)" }}
       >
         {pending ? "Menyimpan…" : "Simpan perubahan"}
       </button>

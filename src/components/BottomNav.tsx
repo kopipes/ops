@@ -17,8 +17,7 @@ export function BottomNav({ tabs }: { tabs: Tab[] }) {
   return (
     <nav
       aria-label="Navigasi utama"
-      className="fixed bottom-0 left-0 right-0 z-40 border-t bg-[var(--surface)] lg:hidden"
-      style={{ borderColor: "var(--border)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="bottom-nav"
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-between">
         {tabs.map((t) => {
@@ -28,8 +27,7 @@ export function BottomNav({ tabs }: { tabs: Tab[] }) {
               <Link
                 href={t.href}
                 aria-current={active ? "page" : undefined}
-                className="flex min-h-[56px] flex-col items-center justify-center gap-1 px-1 text-[11px]"
-                style={{ color: active ? "var(--accent)" : "var(--muted)" }}
+                className="bottom-nav-link"
               >
                 <svg
                   aria-hidden="true"

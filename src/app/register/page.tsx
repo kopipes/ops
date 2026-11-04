@@ -5,6 +5,7 @@ import { registerAction } from "@/app/auth-actions";
 import { currentSession } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { listActiveDivisions } from "@/server/services/admin";
+import { AuthLayout } from "@/components/AuthLayout";
 
 export const metadata = { title: "Daftar — Ops" };
 
@@ -12,9 +13,9 @@ export default async function RegisterPage() {
   if (await currentSession()) redirect("/");
   const divisions = await listActiveDivisions(getDb());
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
+    <AuthLayout>
       <Link href="/login" className="mb-5 text-sm" style={{ color: "var(--accent)" }}>← Kembali ke login</Link>
-      <h1 className="text-2xl font-semibold">Daftar akun Ops</h1>
+      <h1 className="text-[30px] font-semibold tracking-[-0.04em]">Daftar akun Ops</h1>
       <p className="mb-6 mt-2 text-sm" style={{ color: "var(--muted)" }}>Akun baru terdaftar sebagai User (Crew) dan belum aktif. Admin atau Manager divisi Anda perlu mengaktifkannya sebelum Anda bisa masuk.</p>
       {divisions.length ? <AuthForm action={registerAction} submitLabel="Daftar">
         <Field label="Nama lengkap" name="name" autoComplete="name" minLength={2} maxLength={120} />
@@ -30,6 +31,6 @@ export default async function RegisterPage() {
         <Field label="Password (min. 8 karakter)" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} />
         <Field label="Konfirmasi password" name="confirmPassword" type="password" autoComplete="new-password" minLength={8} maxLength={128} />
       </AuthForm> : <p role="status" className="text-sm">Divisi belum tersedia. Hubungi Admin untuk mendaftar.</p>}
-    </main>
+    </AuthLayout>
   );
 }

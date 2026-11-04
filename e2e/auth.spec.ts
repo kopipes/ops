@@ -10,7 +10,7 @@ test.use({ viewport: { width: 390, height: 844 } }); // mobile (§9.1, §9.4)
 
 test("login page renders and rejects a bad password", async ({ page }) => {
   await page.goto(`${BASE}/login`);
-  await expect(page.getByRole("heading", { name: "Ops" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Siap untuk hari ini?" })).toBeVisible();
 
   await page.getByLabel("Email").fill("crew@ops.test");
   await page.getByLabel("Password").fill("wrong-password");
@@ -26,7 +26,7 @@ test("valid login reaches the home page with the bottom tab bar", async ({ page 
   await page.getByRole("button", { name: "Masuk" }).click();
 
   await expect(page).toHaveURL(`${BASE}/`);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Crew Lapangan");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Pantau hari ini.");
 
   const nav = page.getByRole("navigation", { name: "Navigasi utama" });
   await expect(nav).toBeVisible();

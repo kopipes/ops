@@ -3,6 +3,7 @@
 import { NavigationLink as Link } from "@/components/NavigationLink";
 import { usePathname } from "next/navigation";
 import type { Tab } from "@/components/BottomNav";
+import { BrandMark, Icon } from "@/components/ui/WorkspaceUI";
 
 /**
  * Desktop navigation (§12). Hidden below `lg`, where BottomNav takes over.
@@ -27,21 +28,15 @@ export function SideNav({
   return (
     <aside
       aria-label="Navigasi utama"
-      className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-60 lg:flex-col lg:border-r"
-      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+      className="nav-rail"
     >
-      <div className="flex items-center gap-2 px-5 py-5">
-        <span
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-base font-bold text-white"
-          style={{ background: "var(--accent)" }}
-          aria-hidden="true"
-        >
-          O
-        </span>
-        <span className="text-lg font-semibold">Ops</span>
+      <div className="flex items-center gap-3 px-6 pb-8 pt-8">
+        <BrandMark />
+        <div><span className="text-[25px] font-semibold tracking-tight text-white">Ops<span className="text-[#8897bc]">.</span></span><p className="text-[9px] tracking-[0.1em] text-[#7f8eaf]">PROVALIANT GROUP</p></div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3">
+      <nav className="flex-1 overflow-y-auto px-4">
+        <p className="rail-label mb-3">Workspace</p>
         <ul className="flex flex-col gap-1">
           {tabs.map((t) => {
             const active = isActive(t.href);
@@ -50,11 +45,7 @@ export function SideNav({
                 <Link
                   href={t.href}
                   aria-current={active ? "page" : undefined}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium"
-                  style={{
-                    background: active ? "var(--accent)" : "transparent",
-                    color: active ? "#fff" : "var(--fg)",
-                  }}
+                  className="rail-link"
                 >
                   <svg
                     aria-hidden="true"
@@ -80,10 +71,7 @@ export function SideNav({
         {/* §12: report-only shortcuts for review roles. */}
         {canSeeReports ? (
           <div className="mt-6">
-            <p
-              className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide"
-              style={{ color: "var(--muted)" }}
-            >
+            <p className="rail-label mb-3 mt-8">
               Review
             </p>
             <ul className="flex flex-col gap-1">
@@ -95,9 +83,10 @@ export function SideNav({
                 <li key={l.href}>
                   <Link
                     href={l.href}
-                    className="block rounded-lg px-3 py-2 text-sm"
-                    style={{ color: "var(--muted)" }}
+                    aria-current={l.href === "/dashboard" && isActive("/dashboard") ? "page" : undefined}
+                    className="rail-secondary"
                   >
+                    <span className="h-1 w-1 rounded-full bg-[#6e7d9d]" aria-hidden="true" />
                     {l.label}
                   </Link>
                 </li>
@@ -107,26 +96,26 @@ export function SideNav({
         ) : null}
       </nav>
 
-      {userRole === "admin" || userRole === "manager" ? <Link href="/admin/users" className="mx-3 mb-2 flex min-h-tap items-center rounded-lg px-3 text-sm font-medium" style={{ background: isActive("/admin/users") ? "var(--accent)" : "var(--bg)", color: isActive("/admin/users") ? "#fff" : "var(--fg)" }}>User & aktivasi</Link> : null}
+      {userRole === "admin" || userRole === "manager" ? <div className="mx-4 mb-4 mt-6 border-t border-white/10 pt-4"><p className="rail-label mb-2">Kelola workspace</p><Link href="/admin/users" className="rail-link" aria-current={isActive("/admin") ? "page" : undefined}><Icon name="shield" size={18} />User & aktivasi</Link><Link href="/master/checklist-items" className="rail-link" aria-current={isActive("/master") ? "page" : undefined}><Icon name="layers" size={18} />Master data</Link></div> : null}
 
       <Link
         href="/me"
-        className="mx-3 mb-4 mt-2 flex items-center gap-3 rounded-lg px-3 py-2.5"
-        style={{ background: "var(--bg)" }}
+        className="mx-4 mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3"
       >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-          style={{ background: "var(--border)", color: "var(--fg)" }}
+          style={{ background: "#2c3653", color: "#c3cded" }}
           aria-hidden="true"
         >
           {userName.slice(0, 1).toUpperCase()}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{userName}</span>
-          <span className="block truncate text-xs capitalize" style={{ color: "var(--muted)" }}>
+          <span className="block truncate text-xs font-medium text-white">{userName}</span>
+          <span className="mt-0.5 block truncate text-[10px] capitalize text-[#8e9dba]">
             {userRole}
           </span>
         </span>
+        <span className="ml-auto text-[#8e9dba]"><Icon name="arrow" size={16} /></span>
       </Link>
     </aside>
   );

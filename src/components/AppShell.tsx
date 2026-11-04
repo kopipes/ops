@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { BottomNav, type Tab } from "@/components/BottomNav";
 import { SideNav } from "@/components/SideNav";
 import { currentSession, requireUser } from "@/server/auth/current-user";
+import { BrandMark, Icon } from "@/components/ui/WorkspaceUI";
+import Link from "next/link";
 
 /** Icon paths (Feather-style, stroke-based). */
 const ICONS = {
@@ -36,7 +38,8 @@ export async function AppShell({
   ];
 
   return (
-    <div className="lg:flex lg:min-h-dvh">
+    <div className="ops-shell lg:flex lg:min-h-dvh">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-[var(--surface)] focus:p-3">Lewati ke konten</a>
       <SideNav
         tabs={tabs}
         userName={session.name}
@@ -47,8 +50,12 @@ export async function AppShell({
       {/* Below lg the sidebar is hidden and the bottom bar is shown. The
           content column keeps the mobile width on small screens and expands
           to a comfortable reading width on desktop. */}
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        <main className={`mx-auto w-full max-w-lg flex-1 px-4 pt-5 lg:px-8 lg:py-8 ${contentWidth === "form" ? "lg:max-w-3xl" : "lg:max-w-7xl"}`}>
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+        <header className="workspace-topbar">
+          <div className="flex items-center gap-3"><span className="lg:hidden"><BrandMark /></span><div><p className="text-[13px] font-semibold tracking-tight">Provaliant Group</p><p className="text-[11px] text-[var(--muted)]">Operations workspace</p></div></div>
+          <div className="flex items-center gap-5"><p className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><Icon name="shield" size={16} />Workspace internal</p><Link href="/me" aria-label={`Akun ${session.name}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent)]">{session.name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase()}</Link></div>
+        </header>
+        <main id="main-content" className={`ops-main ${contentWidth === "form" ? "lg:!max-w-3xl" : ""}`}>
           {children}
         </main>
       </div>

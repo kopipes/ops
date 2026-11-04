@@ -92,7 +92,7 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
             type="submit"
             disabled={pending}
             className="min-h-tap flex-1 rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             {pending ? "Menyimpan…" : editing ? "Simpan perubahan" : "Tambah kategori"}
           </button>

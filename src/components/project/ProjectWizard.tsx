@@ -206,7 +206,7 @@ export function ProjectWizard({
             key={s}
             className="flex-1 rounded-full px-1 py-1 text-center text-[10px] leading-4"
             style={{
-              background: i === step ? "var(--accent)" : i < step ? "#dcfce7" : "var(--surface)",
+              background: i === step ? "var(--accent-solid)" : i < step ? "#dcfce7" : "var(--surface)",
               color: i === step ? "#fff" : i < step ? "#166534" : "var(--muted)",
               border: "1px solid var(--border)",
             }}
@@ -529,7 +529,7 @@ export function ProjectWizard({
               type="button"
               onClick={addCustom}
               className="min-h-tap shrink-0 rounded-lg px-3 text-sm text-white"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--accent-solid)" }}
             >
               +
             </button>
@@ -687,7 +687,7 @@ export function ProjectWizard({
           type="submit"
           disabled={pending}
           className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-          style={{ background: "var(--accent)" }}
+          style={{ background: "var(--accent-solid)" }}
         >
           {pending ? "Menyimpan…" : "Simpan project"}
         </button>
@@ -711,7 +711,7 @@ export function ProjectWizard({
             onClick={() => canNext && setStep((s) => s + 1)}
             disabled={!canNext}
             className="min-h-tap flex-1 rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             Lanjut →
           </button>

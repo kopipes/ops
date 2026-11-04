@@ -214,7 +214,7 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
             <button
               type="submit"
               className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--accent-solid)" }}
             >
               Simpan status
             </button>
@@ -239,7 +239,7 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
           <button
             type="submit"
             className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             Kirim komentar
           </button>

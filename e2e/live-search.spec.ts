@@ -70,10 +70,17 @@ test("project/home/issue searches update without submit and project options are 
   await expect(page.getByRole("link", { name: new RegExp(issueTitle) })).toBeVisible();
   await expect(page).toHaveURL(/q=Lighting/);
   await page.getByRole("button", { name: /^Filter project:/ }).click();
+  await page.getByRole("heading", { name: "Issues", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Filter project:/ })).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: /^Filter project:/ }).click();
   const optionSearch = page.getByRole("searchbox", { name: "Cari pilihan project", exact: true });
   await optionSearch.fill(beta);
   const choices = page.getByRole("group", { name: "Pilihan project", exact: true });
   await expect(choices.getByRole("button", { name: new RegExp(alpha) })).toHaveCount(0);
+  await choices.getByRole("button", { name: new RegExp(beta) }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: /^Filter project:/ })).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: /^Filter project:/ }).click();
   await choices.getByRole("button", { name: new RegExp(beta) }).click();
   await expect(page).toHaveURL(new RegExp(`projectId=${betaId}`));
   await expect(page.getByText("Tidak ada issue untuk filter ini.", { exact: true })).toBeVisible();

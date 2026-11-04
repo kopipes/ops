@@ -311,7 +311,7 @@ export function TemplateEditor({
                 aria-pressed={phaseTab === p}
                 className="min-h-[34px] flex-1 rounded-full px-2 text-xs"
                 style={{
-                  background: phaseTab === p ? "var(--accent)" : "var(--surface)",
+                  background: phaseTab === p ? "var(--accent-solid)" : "var(--surface)",
                   color: phaseTab === p ? "#fff" : "var(--muted)",
                   border: "1px solid var(--border)",
                 }}
@@ -364,7 +364,7 @@ export function TemplateEditor({
         type="submit"
         disabled={pending}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        style={{ background: "var(--accent-solid)" }}
       >
         {pending ? "Menyimpan…" : submitLabel}
       </button>

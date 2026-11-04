@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AuthForm, Field } from "@/components/AuthForm";
 import { loginAction } from "@/app/auth-actions";
 import { currentSession } from "@/server/auth/current-user";
+import { AuthLayout } from "@/components/AuthLayout";
 
 export const metadata = { title: "Masuk — Ops" };
 
@@ -17,19 +18,11 @@ export default async function LoginPage({
   const { changed, registered } = await searchParams;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-5">
-      <div className="mb-8 text-center">
-        <div
-          className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl text-2xl font-bold text-white"
-          style={{ background: "var(--accent)" }}
-          aria-hidden="true"
-        >
-          O
-        </div>
-        <h1 className="text-2xl font-semibold">Ops</h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-          Pemantauan event harian
-        </p>
+    <AuthLayout>
+      <div className="mb-8">
+        <p className="eyebrow mb-3">SELAMAT DATANG DI OPS</p>
+        <h1 className="text-[32px] font-semibold tracking-[-0.04em]">Siap untuk hari ini?</h1>
+        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Masuk untuk memantau project dan melanjutkan pekerjaan bersama tim Anda.</p>
       </div>
 
       {changed ? (
@@ -53,11 +46,11 @@ export default async function LoginPage({
         />
       </AuthForm>
 
-      <p className="mt-5 text-center text-sm" style={{ color: "var(--muted)" }}>Belum punya akun? <Link href="/register" className="font-medium underline underline-offset-2" style={{ color: "var(--accent)" }}>Daftar</Link></p>
+      <p className="mt-6 text-center text-xs" style={{ color: "var(--muted)" }}>Belum punya akun? <Link href="/register" className="font-semibold" style={{ color: "var(--accent)" }}>Daftar</Link></p>
 
       <p className="mt-6 text-center text-xs" style={{ color: "var(--muted)" }}>
         Lupa password? Hubungi Admin untuk reset.
       </p>
-    </div>
+    </AuthLayout>
   );
 }

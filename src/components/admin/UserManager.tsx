@@ -110,7 +110,7 @@ export function UserManager({
             type="button"
             onClick={() => setCreating(true)}
             className="min-h-[40px] rounded-lg px-3 text-sm font-medium text-white"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             + User
           </button>
@@ -239,7 +239,7 @@ export function UserManager({
               type="submit"
               disabled={pending}
               className="min-h-tap flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--accent-solid)" }}
             >
               {pending ? "Menyimpan…" : editing ? "Simpan perubahan" : "Buat user"}
             </button>
@@ -268,7 +268,7 @@ export function UserManager({
         style={inputStyle}
       />
 
-      <button type="button" aria-pressed={showPending} onClick={() => setShowPending(value => !value)} className="min-h-tap self-start rounded-lg border px-3 text-sm" style={{ borderColor: "var(--border)", background: showPending ? "var(--accent)" : "var(--surface)", color: showPending ? "#fff" : "var(--fg)" }}>Menunggu aktivasi ({rows.filter(user => user.pendingApproval).length})</button>
+      <button type="button" aria-pressed={showPending} onClick={() => setShowPending(value => !value)} className="min-h-tap self-start rounded-lg border px-3 text-sm" style={{ borderColor: "var(--border)", background: showPending ? "var(--accent-solid)" : "var(--surface)", color: showPending ? "#fff" : "var(--fg)" }}>Menunggu aktivasi ({rows.filter(user => user.pendingApproval).length})</button>
 
       <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
         {visible.map((u) => (
@@ -378,7 +378,7 @@ export function UserManager({
                   type="submit"
                   disabled={resetPending}
                   className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  style={{ background: "var(--accent)" }}
+                  style={{ background: "var(--accent-solid)" }}
                 >
                   {resetPending ? "Menyimpan…" : "Simpan password"}
                 </button>

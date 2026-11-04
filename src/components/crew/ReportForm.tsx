@@ -430,7 +430,7 @@ export function ReportForm({
           >
             <div
               className="h-full rounded-full transition-all"
-              style={{ width: `${progress}%`, background: "var(--accent)" }}
+              style={{ width: `${progress}%`, background: "var(--accent-solid)" }}
             />
           </div>
         </div>
@@ -800,7 +800,7 @@ export function ReportForm({
         type="submit"
         disabled={pending}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        style={{ background: "var(--accent-solid)" }}
       >
         {pending ? "Mengirim…" : `Submit ${PHASE_TITLE[phase]}`}
       </button>

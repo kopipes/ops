@@ -16,6 +16,7 @@ import { canSubmitPhase } from "@/server/permissions";
 import { getGlobalSettings, type GlobalSettings } from "@/server/services/app-settings";
 import { LiveSearchFilters } from "@/components/LiveSearchFilters";
 import { normalizeSearch, textSearch } from "@/server/search";
+import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
 /** §4.2: which phase should the primary button target right now? */
 function primaryPhase(project: {
@@ -143,19 +144,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <AppShell>
-      <header className="mb-5">
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Halo,
-        </p>
-        <h1 className="text-xl font-semibold">{session.name}</h1>
-      </header>
+      <PageHeader eyebrow="DAILY OPERATIONS" title="Pantau hari ini." description={`Halo, ${session.name}. Lihat progres project dan hal yang perlu ditindaklanjuti.`} action={<span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[11px] font-medium text-[var(--muted)]"><Icon name="calendar" size={14} />{new Intl.DateTimeFormat("id-ID", {timeZone: settings.defaultTimezone, day: "numeric", month: "long", year: "numeric"}).format(new Date(now))}</span>} />
+      <div className="mb-7 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <MetricCard label={query ? "Project ditemukan" : "Project aktif"} value={cards.length} icon="folder" hint={query ? "Sesuai pencarian Anda" : "Dalam akses Anda"} />
+        <MetricCard label="Opening terisi" value={`${cards.filter(c => c.opening).length}/${cards.length}`} icon="check" tone="success" hint="Laporan awal hari" />
+        <MetricCard label="Closing terisi" value={`${cards.filter(c => c.closing).length}/${cards.length}`} icon="clock" tone="neutral" hint="Laporan akhir hari" />
+        <Link href="/issues?open=1&active=1" aria-label="Lihat issue terbuka"><MetricCard label="Issue terbuka" value={cards.reduce((total,c) => total+c.openIssues,0)} icon="alert" tone={cards.some(c => c.highIssues) ? "warning" : "neutral"} hint={query ? "Pada project hasil pencarian" : "Lihat tindak lanjut →"} /></Link>
+      </div>
 
       <section aria-labelledby="today-heading">
-        <h2 id="today-heading" className="mb-2 text-sm font-medium" style={{ color: "var(--muted)" }}>
-          Hari ini
-        </h2>
-
         <LiveSearchFilters placeholder="Cari project hari ini" />
+        <div className="mb-4 flex items-center justify-between gap-3"><h2 id="today-heading" className="section-title">Aktivitas project<span className="ml-2 rounded-md bg-[var(--border)] px-2 py-0.5 text-xs font-medium text-[var(--muted)]">{cards.length}</span></h2><Link href="/projects" className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]">Semua project<Icon name="arrow" size={14} /></Link></div>
         {cards.length === 0 ? (
           <p
             className="rounded-xl border px-4 py-6 text-center text-sm"
@@ -164,18 +163,18 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {query ? "Tidak ada project hari ini yang cocok dengan pencarian." : "Belum ada project aktif yang bisa kamu akses."}
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {cards.map((c) => (
               <li
                 key={c.project.id}
-                className="flex flex-col rounded-xl border px-4 py-3"
-                style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+                className="project-card flex flex-col"
               >
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] font-medium tracking-wide text-[var(--muted)]">{c.project.code}</span><span className={`status-badge ${c.opening && c.closing ? "tone-success" : c.opening || c.closing || c.monitoring ? "tone-accent" : "tone-neutral"}`}><span className="status-dot" />{c.opening && c.closing ? "Laporan terisi" : c.opening || c.closing || c.monitoring ? "Sebagian terisi" : "Belum diisi"}</span></div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium">{c.project.name}</p>
-                    <p className="text-xs" style={{ color: "var(--muted)" }}>
-                      {c.project.venue} · {c.today}
+                    <h3 className="text-[17px] font-semibold leading-6 tracking-tight">{c.project.name}</h3>
+                    <p className="mt-2 flex items-center gap-1.5 text-xs" style={{ color: "var(--muted)" }}>
+                      <Icon name="pin" size={13} />{c.project.venue}
                     </p>
                   </div>
                   {c.openingOverdue ? (
@@ -188,10 +187,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   ) : null}
                 </div>
 
-                <ul className="mt-2 flex flex-col gap-0.5 text-sm">
+                <ul className="mb-3 mt-5 flex flex-col gap-3 rounded-xl bg-[var(--bg)] p-3.5 text-xs">
                   <li className="flex justify-between">
                     <span style={{ color: "var(--muted)" }}>Opening</span>
-                    <span>
+                    <span className={c.opening ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-[var(--muted)]"}>
                       {c.opening
                         ? `${c.opening.submittedAt ? toLocalTime(c.opening.submittedAt, c.project.timezone) : "✓"} ✓${
                             c.opening.isLate && settings.openingWindowEnabled ? " · terlambat" : ""
@@ -205,7 +204,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   </li>
                   <li className="flex justify-between">
                     <span style={{ color: "var(--muted)" }}>Closing</span>
-                    <span>{c.closing ? "✓" : "belum"}</span>
+                    <span className={c.closing ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-[var(--muted)]"}>{c.closing ? "Terisi ✓" : "belum"}</span>
                   </li>
                   {c.openIssues > 0 ? (
                     <li className="flex justify-between">
@@ -220,8 +219,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 {c.day && c.canSubmit ? (
                   <Link
                     href={`/projects/${c.project.id}/days/${c.today}/${c.phase}`}
-                    className="mt-3 flex min-h-tap items-center justify-center rounded-lg px-4 py-2 text-sm font-medium text-white"
-                    style={{ background: "var(--accent)" }}
+                    className="btn-primary mb-1 mt-1"
                   >
                     {PHASE_BUTTON[c.phase]}
                   </Link>

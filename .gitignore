@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .next-preview/
+.next-design/
 .next-e2e/
 out/
 data/

@@ -60,7 +60,7 @@ export function ChecklistItemList({
             type="button"
             onClick={() => setCreating(true)}
             className="min-h-[40px] rounded-lg px-3 text-sm font-medium text-white"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             + Item
           </button>
@@ -125,7 +125,7 @@ export function ChecklistItemList({
             aria-pressed={tab === t.key}
             className="min-h-[36px] whitespace-nowrap rounded-full px-3 text-sm"
             style={{
-              background: tab === t.key ? "var(--accent)" : "var(--surface)",
+              background: tab === t.key ? "var(--accent-solid)" : "var(--surface)",
               color: tab === t.key ? "#fff" : "var(--muted)",
               border: "1px solid var(--border)",
             }}

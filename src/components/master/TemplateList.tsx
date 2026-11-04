@@ -65,7 +65,7 @@ export function TemplateList({
         <a
           href="/master/templates/new"
           className="min-h-[40px] rounded-lg px-3 text-sm font-medium leading-[40px] text-white"
-          style={{ background: "var(--accent)" }}
+          style={{ background: "var(--accent-solid)" }}
         >
           + Template baru
         </a>
@@ -124,7 +124,7 @@ export function TemplateList({
             type="submit"
             disabled={projPending}
             className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-            style={{ background: "var(--accent)" }}
+            style={{ background: "var(--accent-solid)" }}
           >
             {projPending ? "Membuat…" : "Buat template"}
           </button>
@@ -166,7 +166,7 @@ export function TemplateList({
               type="submit"
               disabled={dupPending}
               className="min-h-tap flex-1 rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--accent-solid)" }}
             >
               {dupPending ? "Menyalin…" : "Duplikat"}
             </button>

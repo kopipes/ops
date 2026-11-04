@@ -6,6 +6,7 @@ import { getDashboard } from "@/server/services/reports-review";
 import { visibleProjectIds } from "@/server/visibility";
 import { isAdmin, isCorporate, isManager } from "@/server/permissions";
 import { issueStatusLabel } from "@/lib/schemas";
+import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
 export const metadata = { title: "Dashboard — Ops" };
 
@@ -30,34 +31,17 @@ export default async function DashboardPage() {
   const ids = await visibleProjectIds(db, session.user);
   const data = await getDashboard(db, ids);
 
-  const stat = (label: string, value: string | number, tone?: string) => (
-    <div
-      className="rounded-xl border px-3 py-2 text-center"
-      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-    >
-      <p className="text-xs" style={{ color: "var(--muted)" }}>
-        {label}
-      </p>
-      <p className="text-lg font-semibold" style={{ color: tone }}>
-        {value}
-      </p>
-    </div>
-  );
+  const stat = (label: string, value: string | number, tone?: string) => <MetricCard label={label} value={value} icon={tone ? "alert" : "layers"} tone={tone ? "warning" : "accent"} />;
 
   return (
     <AppShell>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <Link href="/reports" className="text-xs" style={{ color: "var(--accent)" }}>
-          Report →
-        </Link>
-      </div>
+      <PageHeader eyebrow="OPERATIONS OVERVIEW" title="Dashboard" description="Gambaran operasional, progres laporan, dan prioritas tim Anda." action={<Link href="/reports" className="btn-secondary">Lihat report<Icon name="arrow" size={16} /></Link>} />
 
       <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>
         Hari ini · {data.today}
       </p>
 
-      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-3 lg:gap-3 xl:grid-cols-6">
+      <div className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
         {stat("Project aktif", data.activeProjects)}
         {stat("Opening terisi", `${data.openingDone}/${data.activeProjects}`)}
         {stat("Closing terisi", `${data.closingDone}/${data.activeProjects}`)}
@@ -66,20 +50,20 @@ export default async function DashboardPage() {
         {stat("Hari belum direview", data.unreviewedDays, data.unreviewedDays > 0 ? "#ea580c" : undefined)}
       </div>
 
-      <section className="mb-4">
-        <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--muted)" }}>
+      <section className="surface-card mb-7 p-5">
+        <h2 className="section-title mb-4">
           Issue terbuka per severity
         </h2>
-        <ul className="flex gap-1 lg:grid lg:grid-cols-4 lg:gap-3">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(["critical", "high", "medium", "low"] as const).map((s) => (
             <li
               key={s}
-              className="flex-1 rounded-lg border text-center text-xs"
+              className="flex-1 rounded-xl border text-center text-xs"
               style={{ borderColor: "var(--border)", background: "var(--surface)" }}
             >
               <Link href={`/issues?severity=${s}&open=1&active=1`} className="block min-h-tap rounded-lg px-2 py-2" style={{ color: "var(--fg)" }} aria-label={`Lihat ${data.openIssuesBySeverity[s]} issue ${s} belum ditutup`}>
-              <p style={{ color: "var(--muted)" }}>{s}</p>
-              <p className="font-semibold">{data.openIssuesBySeverity[s]}</p>
+              <p className="capitalize" style={{ color: "var(--muted)" }}>{s}</p>
+              <p className="my-2 text-2xl font-semibold tracking-tight">{data.openIssuesBySeverity[s]}</p>
               <span className="text-[11px]" style={{ color: "var(--accent)" }}>Lihat issue →</span>
               </Link>
             </li>
@@ -88,7 +72,7 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--muted)" }}>
+        <h2 className="section-title mb-4">
           Butuh perhatian ({data.needsAttention.length})
         </h2>
         {data.needsAttention.length === 0 ? (

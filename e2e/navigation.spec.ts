@@ -7,7 +7,7 @@ for (const width of [390, 1440]) {
     await page.getByLabel("Email", { exact: true }).fill("manager@ops.test");
     await page.getByLabel("Password", { exact: true }).fill("OpsDemo2026!");
     await page.getByRole("button", { name: "Masuk", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Manager Event", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pantau hari ini.", exact: true })).toBeVisible();
 
     let release!: () => void;
     let intercepted!: () => void;
@@ -21,7 +21,7 @@ for (const width of [390, 1440]) {
       await link.click({ noWaitAfter: true });
       await request;
       await expect(link).toHaveAttribute("aria-busy", "true");
-      await expect(page.getByRole("heading", { name: "Manager Event", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Pantau hari ini.", exact: true })).toBeVisible();
       await expect(page.getByText("Memuat halaman…", { exact: true })).toHaveCount(0);
       release();
       await expect(page.getByRole("heading", { name: "Project", exact: true })).toBeVisible();

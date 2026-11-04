@@ -151,7 +151,7 @@ export default async function ProjectDetailPage({
             aria-current={tab === t ? "page" : undefined}
             className="flex min-h-[40px] items-center justify-center rounded-md px-2 text-center text-xs lg:px-6"
             style={{
-              background: tab === t ? "var(--accent)" : "transparent",
+              background: tab === t ? "var(--accent-solid)" : "transparent",
               color: tab === t ? "#fff" : "var(--muted)",
             }}
           >
@@ -511,7 +511,7 @@ export default async function ProjectDetailPage({
               <button
                 type="submit"
                 className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-                style={{ background: "var(--accent)" }}
+                style={{ background: "var(--accent-solid)" }}
               >
                 Tambah
               </button>
@@ -593,7 +593,7 @@ export default async function ProjectDetailPage({
                 <button
                   type="submit"
                   className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
-                  style={{ background: "var(--accent)" }}
+                  style={{ background: "var(--accent-solid)" }}
                 >
                   Simpan status
                 </button>

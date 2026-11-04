@@ -10,6 +10,7 @@ import { listIssues, type IssueStatus, type Severity } from "@/server/services/i
 import { visibleProjectIds } from "@/server/visibility";
 import { ISSUE_STATUSES, SEVERITIES, severityLabel, issueStatusLabel } from "@/lib/schemas";
 import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
+import { Icon, PageHeader } from "@/components/ui/WorkspaceUI";
 
 export const metadata = { title: "Issues — Ops" };
 
@@ -58,35 +59,24 @@ export default async function IssuesPage({
 
   return (
     <AppShell>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Issues</h1>
-        {canCreate ? (
-          <Link
-            href="/issues/new"
-            className="min-h-[40px] rounded-lg px-3 text-sm font-medium leading-[40px] text-white"
-            style={{ background: "var(--accent)" }}
-          >
-            + Issue
-          </Link>
-        ) : null}
-      </div>
+      <PageHeader eyebrow="FOLLOW UP & RESOLUTION" title="Issues" description="Catat kendala, tentukan prioritas, dan ikuti tindak lanjutnya." action={canCreate ? <Link href="/issues/new" className="btn-primary"><Icon name="plus" size={17} />Issue baru</Link> : undefined} />
 
       {/* Filters (§12 /issues) */}
       <LiveSearchFilters placeholder="Cari issue atau project" projects={projectOptions} />
       {activeProjectsOnly ? <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Project aktif · <Link href={qs({ active: undefined })} className="underline">Lihat semua project</Link></p> : null}
-      <div className="mb-3 flex flex-wrap gap-1">
+      <div className="mb-3 flex flex-wrap gap-2">
         <Link
           href={qs({ status: undefined })}
           className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]"
           style={{
             borderColor: "var(--border)",
-            background: !validStatus && !activeOnly ? "var(--accent)" : "var(--surface)",
+            background: !validStatus && !activeOnly ? "var(--accent-solid)" : "var(--surface)",
             color: !validStatus && !activeOnly ? "#fff" : "var(--muted)",
           }}
         >
           Semua
         </Link>
-        <Link href={qs({ status: undefined, open: "1" })} className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]" style={{ borderColor: "var(--border)", background: activeOnly ? "var(--accent)" : "var(--surface)", color: activeOnly ? "#fff" : "var(--muted)" }}>Belum ditutup</Link>
+        <Link href={qs({ status: undefined, open: "1" })} className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]" style={{ borderColor: "var(--border)", background: activeOnly ? "var(--accent-solid)" : "var(--surface)", color: activeOnly ? "#fff" : "var(--muted)" }}>Belum ditutup</Link>
         {ISSUE_STATUSES.map((s) => (
           <Link
             key={s}
@@ -94,7 +84,7 @@ export default async function IssuesPage({
             className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]"
             style={{
               borderColor: "var(--border)",
-              background: validStatus === s ? "var(--accent)" : "var(--surface)",
+              background: validStatus === s ? "var(--accent-solid)" : "var(--surface)",
               color: validStatus === s ? "#fff" : "var(--muted)",
             }}
           >
@@ -103,7 +93,8 @@ export default async function IssuesPage({
         ))}
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-1">
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[10px] font-medium text-[var(--muted)]">Prioritas</span>
         {SEVERITIES.map((s) => (
           <Link
             key={s}
@@ -111,7 +102,7 @@ export default async function IssuesPage({
             className="min-h-[32px] rounded-full border px-3 text-xs leading-[30px]"
             style={{
               borderColor: "var(--border)",
-              background: validSeverity === s ? "var(--accent)" : "var(--surface)",
+              background: validSeverity === s ? "var(--accent-solid)" : "var(--surface)",
               color: validSeverity === s ? "#fff" : "var(--muted)",
             }}
           >
@@ -120,6 +111,7 @@ export default async function IssuesPage({
         ))}
       </div>
 
+      <div className="mb-4 flex items-center justify-between"><h2 className="section-title">Daftar issues<span className="ml-2 rounded-md bg-[var(--border)] px-2 py-0.5 text-xs font-medium text-[var(--muted)]">{rows.length}</span></h2><span className="text-[10px] text-[var(--muted)]">{rows.filter(i => i.status !== "closed").length} belum ditutup</span></div>
       {rows.length === 0 ? (
         <p
           className="rounded-xl border px-4 py-6 text-center text-sm"
@@ -128,13 +120,12 @@ export default async function IssuesPage({
           Tidak ada issue untuk filter ini.
         </p>
       ) : (
-        <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((i) => (
             <li key={i.id}>
               <Link
                 href={`/issues/${i.id}`}
-                className="block rounded-xl border px-4 py-3"
-                style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
+                className="project-card"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -142,8 +133,8 @@ export default async function IssuesPage({
                       {i.code}
                       {i.categoryName ? ` · ${i.categoryName}` : ""}
                     </p>
-                    <p className="font-medium">{i.title}</p>
-                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                    <h3 className="mb-2 mt-2 text-base font-semibold leading-6 tracking-tight">{i.title}</h3>
+                    <p className="text-[11px]" style={{ color: "var(--muted)" }}>
                       {i.projectName}
                       {i.dayDate ? ` · ${i.dayDate}` : ""}
                     </p>
@@ -154,13 +145,13 @@ export default async function IssuesPage({
                   </div>
                 </div>
 
-                <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                <p className="mt-5 border-t border-[var(--border)] pt-4 text-[10px] leading-5" style={{ color: "var(--muted)" }}>
                   Diposting oleh {i.authorName} · {i.authorRole}
                   {i.authorDivision ? ` · ${i.authorDivision}` : ""} ·{" "}
                   {new Date(i.createdAt).toLocaleString("id-ID")}
                 </p>
 
-                <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>
                   {i.photoCount} foto · {i.commentCount} komentar
                   {i.picName || i.picExternal ? ` · PIC: ${i.picName ?? i.picExternal}` : ""}
                 </p>
