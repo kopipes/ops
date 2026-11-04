@@ -8,7 +8,7 @@ import { getEditableReport, listReportRevisions } from "@/server/services/report
 import { editReportAction } from "@/app/edit-actions";
 import { formatReportTimestamp } from "@/lib/datetime";
 
-export const metadata = { title: "Edit Laporan — Ops" };
+export const metadata = { title: "Edit Laporan — Pulse" };
 
 const RESULT_LABEL: Record<string, string> = { ok: "OK", not_ok: "Tidak OK", na: "N/A" };
 

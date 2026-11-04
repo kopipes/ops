@@ -3,7 +3,7 @@ import { changePasswordAction } from "@/app/auth-actions";
 import { requireUser } from "@/server/auth/current-user";
 import { AuthLayout } from "@/components/AuthLayout";
 
-export const metadata = { title: "Ganti Password — Ops" };
+export const metadata = { title: "Ganti Password — Pulse" };
 
 export default async function ChangePasswordPage() {
   const session = await requireUser();

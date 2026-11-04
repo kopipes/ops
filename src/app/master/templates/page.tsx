@@ -16,7 +16,7 @@ import {
   templateFromProjectAction,
 } from "@/app/master-actions";
 
-export const metadata = { title: "Template Checklist — Ops" };
+export const metadata = { title: "Template Checklist — Pulse" };
 
 export default async function TemplatesPage() {
   const session = await requireUser();

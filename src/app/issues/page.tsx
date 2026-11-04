@@ -12,7 +12,7 @@ import { ISSUE_STATUSES, SEVERITIES, severityLabel, issueStatusLabel } from "@/l
 import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
 import { Icon, PageHeader } from "@/components/ui/WorkspaceUI";
 
-export const metadata = { title: "Issues — Ops" };
+export const metadata = { title: "Issues — Pulse" };
 
 export default async function IssuesPage({
   searchParams,

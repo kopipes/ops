@@ -4,7 +4,7 @@ import { BrandMark, Icon } from "@/components/ui/WorkspaceUI";
 export function AuthLayout({ children }: { children: ReactNode }) {
   return <div className="auth-layout">
     <aside className="auth-story">
-      <div className="flex items-center gap-3"><BrandMark /><span className="text-2xl font-semibold tracking-tight">Ops<span className="ml-3 border-l border-white/20 pl-3 text-xs font-normal tracking-wide text-slate-400">PROVALIANT GROUP</span></span></div>
+      <div className="flex items-center gap-3"><BrandMark /><span className="text-2xl font-semibold tracking-tight">Pulse<span className="ml-3 border-l border-white/20 pl-3 text-xs font-normal tracking-wide text-slate-400">PROVALIANT GROUP</span></span></div>
       <div className="auth-story-content">
         <p className="eyebrow !text-indigo-300">YOUR OPERATIONS, CONNECTED</p>
         <h2>Setiap detail.<br />Satu kendali.</h2>
@@ -18,6 +18,6 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       </div>
       <p className="flex items-center gap-2 text-xs text-slate-400"><Icon name="shield" size={15} /> Ruang kerja internal Provaliant Group</p>
     </aside>
-    <main className="auth-content"><div className="auth-form-wrap"><div className="mb-9 flex items-center gap-3 lg:hidden"><BrandMark /><span className="text-xl font-semibold tracking-tight">Ops<span className="ml-2 text-xs font-normal text-[var(--muted)]">Provaliant Group</span></span></div>{children}<p className="auth-footer">Ops · Provaliant Group</p></div></main>
+    <main className="auth-content"><div className="auth-form-wrap"><div className="mb-9 flex items-center gap-3 lg:hidden"><BrandMark /><span className="text-xl font-semibold tracking-tight">Pulse<span className="ml-2 text-xs font-normal text-[var(--muted)]">Provaliant Group</span></span></div>{children}<p className="auth-footer">Pulse · Provaliant Group</p></div></main>
   </div>;
 }

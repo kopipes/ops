@@ -10,7 +10,7 @@ import { listChecklistItems } from "@/server/services/checklist-items";
 import { isAdmin, isManager } from "@/server/permissions";
 import { saveTemplateAction } from "@/app/master-actions";
 
-export const metadata = { title: "Template Baru — Ops" };
+export const metadata = { title: "Template Baru — Pulse" };
 
 export default async function NewTemplatePage() {
   const session = await requireUser();

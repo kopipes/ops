@@ -22,7 +22,7 @@ import {
   printCss,
 } from "@/lib/print/shared";
 
-export const metadata = { title: "Print Rekap — Ops" };
+export const metadata = { title: "Print Rekap — Pulse" };
 
 const RESULT_PILL: Record<string, { cls: string; label: string }> = {
   ok: { cls: "pill-ok", label: "OK" },

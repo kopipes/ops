@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const db = getDb();
   const p = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, id)).get();
-  return { title: p ? `${p.name} — Ops` : "Project — Ops" };
+  return { title: p ? `${p.name} — Pulse` : "Project — Pulse" };
 }
 
 const STATUS_LABEL: Record<string, string> = {

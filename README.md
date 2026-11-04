@@ -1,4 +1,4 @@
-# Ops
+# Pulse
 
 Aplikasi web mobile-first (PWA) untuk memantau jalannya event harian: **Opening → Monitoring → Closing**.
 

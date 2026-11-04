@@ -32,7 +32,7 @@ export function SideNav({
     >
       <div className="flex shrink-0 items-center gap-3 px-6 pb-8 pt-8">
         <BrandMark />
-        <div><span className="text-[25px] font-semibold tracking-tight text-white">Ops<span className="text-[#8897bc]">.</span></span><p className="text-[9px] tracking-[0.1em] text-[#7f8eaf]">PROVALIANT GROUP</p></div>
+        <div><span className="text-[25px] font-semibold tracking-tight text-white">Pulse<span className="text-[#8897bc]">.</span></span><p className="text-[9px] tracking-[0.1em] text-[#7f8eaf]">PROVALIANT GROUP</p></div>
       </div>
 
       <nav className="rail-scroll px-4 pb-3">

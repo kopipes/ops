@@ -15,7 +15,7 @@ import {
   saveChecklistItemAction,
 } from "@/app/master-actions";
 
-export const metadata = { title: "Master Checklist — Ops" };
+export const metadata = { title: "Master Checklist — Pulse" };
 
 export default async function ChecklistItemsPage() {
   const session = await requireUser();

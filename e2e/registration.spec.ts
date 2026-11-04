@@ -14,7 +14,7 @@ async function login(page: Page, email: string, pass = "OpsDemo2026!") {
 async function register(page: Page, email: string, division: string) {
   await page.goto("/login");
   await page.getByRole("link", { name: "Daftar", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Daftar akun Ops" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Daftar akun Pulse" })).toBeVisible();
   // A placeholder plus the seeded divisions. The exact total is not a business
   // rule: other specs create divisions (e.g. "Divisi D…"), so asserting a fixed
   // count makes this fail on suite order. Assert it is populated and that the

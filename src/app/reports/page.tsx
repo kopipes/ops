@@ -11,7 +11,7 @@ import { getGlobalSettings } from "@/server/services/app-settings";
 import { toLocalDate } from "@/lib/datetime";
 import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
-export const metadata = { title: "Report — Ops" };
+export const metadata = { title: "Report — Pulse" };
 
 const STATUS_FILTERS = [
   { key: "all", label: "Semua" },

@@ -131,5 +131,5 @@ export async function CrewReportPage({
 }
 
 export function phaseMetadata(phase: Phase) {
-  return { title: `${PHASE_LABEL[phase]} — Ops` };
+  return { title: `${PHASE_LABEL[phase]} — Pulse` };
 }

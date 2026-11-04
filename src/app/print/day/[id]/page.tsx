@@ -21,7 +21,7 @@ import {
   printCss,
 } from "@/lib/print/shared";
 
-export const metadata = { title: "Print — Ops" };
+export const metadata = { title: "Print — Pulse" };
 
 const RESULT_PILL: Record<string, { cls: string; label: string }> = {
   ok: { cls: "pill-ok", label: "OK" },

@@ -10,7 +10,7 @@ import { listMembers } from "@/server/services/members";
 import { createIssueAction } from "@/app/issue-actions";
 import { toLocalDate } from "@/lib/datetime";
 
-export const metadata = { title: "Issue Baru — Ops" };
+export const metadata = { title: "Issue Baru — Pulse" };
 
 export default async function NewIssuePage({
   searchParams,

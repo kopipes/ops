@@ -8,7 +8,7 @@ import { isAdmin, isCorporate, isManager } from "@/server/permissions";
 import { issueStatusLabel } from "@/lib/schemas";
 import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
-export const metadata = { title: "Dashboard — Ops" };
+export const metadata = { title: "Dashboard — Pulse" };
 
 export default async function DashboardPage() {
   const session = await requireUser();

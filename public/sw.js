@@ -1,5 +1,5 @@
 /**
- * Ops service worker (§9.4 — "PWA, offline shell").
+ * Pulse service worker (§9.4 — "PWA, offline shell").
  *
  * Deliberately conservative. The app is server-rendered and permission-scoped,
  * so caching pages would risk showing stale or wrong-user data. What it caches:
@@ -11,7 +11,7 @@
  * It NEVER caches: HTML pages, API responses, or photos — those must always hit
  * the server so permissions and fresh data are respected.
  */
-const VERSION = "ops-v2";
+const VERSION = "pulse-v1";
 const SHELL = `${VERSION}-shell`;
 const SHELL_ASSETS = ["/icon.svg", "/manifest.webmanifest", "/offline.html"];
 

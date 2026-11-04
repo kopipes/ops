@@ -19,7 +19,7 @@ import { inArray } from "drizzle-orm";
 import { saveProjectAction } from "@/app/project-actions";
 import { toLocalDate } from "@/lib/datetime";
 
-export const metadata = { title: "Project Baru — Ops" };
+export const metadata = { title: "Project Baru — Pulse" };
 
 export default async function NewProjectPage({
   searchParams,

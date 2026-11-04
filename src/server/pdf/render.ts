@@ -159,7 +159,7 @@ export async function renderPdf(printUrl: string, options: RenderOptions = {}): 
           printBackground: true,
           margin: { top: "12mm", bottom: "14mm", left: "10mm", right: "10mm" },
           displayHeaderFooter: true,
-          headerTemplate: `<div style="font-size:8px;width:100%;padding:0 10mm;color:#94a3b8;">Ops</div>`,
+          headerTemplate: `<div style="font-size:8px;width:100%;padding:0 10mm;color:#94a3b8;">Pulse</div>`,
           footerTemplate: `<div style="font-size:8px;width:100%;padding:0 10mm;color:#94a3b8;text-align:right;">
             Halaman <span class="pageNumber"></span> / <span class="totalPages"></span>
           </div>`,

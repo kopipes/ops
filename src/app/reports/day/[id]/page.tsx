@@ -16,7 +16,7 @@ import { ReportChecklist } from "@/components/reports/ReportChecklist";
 import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
 import { issueStatusLabel, severityLabel } from "@/lib/schemas";
 
-export const metadata = { title: "Detail Hari — Ops" };
+export const metadata = { title: "Detail Hari — Pulse" };
 
 function fmtTime(at: number | null, tz: string) {
   if (!at) return "—";

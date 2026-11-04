@@ -66,11 +66,11 @@ test("logout returns to login", async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("PWA manifest is named Ops (§9.4)", async ({ request }) => {
+test("PWA manifest is named Pulse (§9.4)", async ({ request }) => {
   const res = await request.get(`${BASE}/manifest.webmanifest`);
   expect(res.ok()).toBeTruthy();
   const manifest = await res.json();
-  expect(manifest.name).toContain("Ops");
-  expect(manifest.short_name).toBe("Ops");
+  expect(manifest.name).toContain("Pulse");
+  expect(manifest.short_name).toBe("Pulse");
   expect(manifest.display).toBe("standalone");
 });

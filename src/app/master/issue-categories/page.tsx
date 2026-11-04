@@ -8,7 +8,7 @@ import { listIssueCategories } from "@/server/services/categories";
 import { isAdmin } from "@/server/permissions";
 import { deactivateIssueCategoryAction, saveIssueCategoryAction } from "@/app/master-actions";
 
-export const metadata = { title: "Kategori Issue — Ops" };
+export const metadata = { title: "Kategori Issue — Pulse" };
 
 export default async function IssueCategoriesPage() {
   const session = await requireUser();

@@ -5,7 +5,7 @@ import { loginAction } from "@/app/auth-actions";
 import { currentSession } from "@/server/auth/current-user";
 import { AuthLayout } from "@/components/AuthLayout";
 
-export const metadata = { title: "Masuk — Ops" };
+export const metadata = { title: "Masuk — Pulse" };
 
 export default async function LoginPage({
   searchParams,
@@ -20,7 +20,7 @@ export default async function LoginPage({
   return (
     <AuthLayout>
       <div className="mb-8">
-        <p className="eyebrow mb-3">SELAMAT DATANG DI OPS</p>
+        <p className="eyebrow mb-3">SELAMAT DATANG DI PULSE</p>
         <h1 className="text-[32px] font-semibold tracking-[-0.04em]">Siap untuk hari ini?</h1>
         <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Masuk untuk memantau project dan melanjutkan pekerjaan bersama tim Anda.</p>
       </div>

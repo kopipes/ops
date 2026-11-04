@@ -1,6 +1,6 @@
 {
-  "name": "Ops — Event Monitoring",
-  "short_name": "Ops",
+  "name": "Pulse — Event Monitoring",
+  "short_name": "Pulse",
   "description": "Pemantauan event harian: opening, monitoring, closing.",
   "start_url": "/",
   "display": "standalone",

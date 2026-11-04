@@ -3,17 +3,17 @@ import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
 
 /**
- * §9.4: the app is named "Ops" in the manifest (name + short_name),
+ * §9.4: the app is named "Pulse" in the manifest (name + short_name),
  * the tab title, and the splash — all sourced from here.
  */
 export const metadata: Metadata = {
-  title: "Ops",
+  title: "Pulse",
   description: "Pemantauan event harian: opening, monitoring, closing.",
-  applicationName: "Ops",
+  applicationName: "Pulse",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Ops",
+    title: "Pulse",
     statusBarStyle: "default",
   },
   icons: {

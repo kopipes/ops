@@ -7,7 +7,7 @@ import { getDb } from "@/server/db";
 import { listActiveDivisions } from "@/server/services/admin";
 import { AuthLayout } from "@/components/AuthLayout";
 
-export const metadata = { title: "Daftar — Ops" };
+export const metadata = { title: "Daftar — Pulse" };
 
 export default async function RegisterPage() {
   if (await currentSession()) redirect("/");
@@ -15,7 +15,7 @@ export default async function RegisterPage() {
   return (
     <AuthLayout>
       <Link href="/login" className="mb-5 text-sm" style={{ color: "var(--accent)" }}>← Kembali ke login</Link>
-      <h1 className="text-[30px] font-semibold tracking-[-0.04em]">Daftar akun Ops</h1>
+      <h1 className="text-[30px] font-semibold tracking-[-0.04em]">Daftar akun Pulse</h1>
       <p className="mb-6 mt-2 text-sm" style={{ color: "var(--muted)" }}>Akun baru terdaftar sebagai User (Crew) dan belum aktif. Admin atau Manager divisi Anda perlu mengaktifkannya sebelum Anda bisa masuk.</p>
       {divisions.length ? <AuthForm action={registerAction} submitLabel="Daftar">
         <Field label="Nama lengkap" name="name" autoComplete="name" minLength={2} maxLength={120} />
