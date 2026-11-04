@@ -177,7 +177,7 @@ Di produksi, gunakan **Litestream** untuk replikasi kontinu ke S3-compatible sto
 
 Panduan VPS yang dipakai: [`deploy/README.md`](deploy/README.md). Deployment
 native memakai service systemd khusus Ops, port loopback `4215`, dan vhost Nginx
-terpisah untuk `ops.provaliantgroup.com`. Kode diambil dari commit GitHub;
+terpisah untuk `pulse.provaliantgroup.com`. Kode diambil dari commit GitHub;
 setelah import pertama, database/uploads pada VPS menjadi sumber utama dan
 tidak boleh ditimpa data lokal saat update. Backup dan rollback tersedia.
 

@@ -1,8 +1,11 @@
-# Ops on cloudeka48
+# Pulse on cloudeka48
 
-The verified public hostname is **ops.provaliantgroup.com**. The SSH alias is
+The verified public hostname is **pulse.provaliantgroup.com**. The SSH alias is
 `cloudeka48`. This app uses only `127.0.0.1:4215`, a dedicated `ops` Unix user,
 `ops.service`, and the Nginx vhost `sites-available/ops` + `sites-enabled/ops`.
+The former hostname `ops.provaliantgroup.com` redirects to the new canonical
+hostname while preserving the path and query. Keep its certificate and HTTP ACME
+challenge route so HTTPS bookmarks and certificate renewal continue to work.
 Other services, ports, databases and vhost files must remain unchanged.
 
 ## Sources of truth and persistent paths
@@ -45,7 +48,7 @@ Example environment (generate the session secret privately):
 NODE_ENV=production
 PORT=4215
 NEXT_TELEMETRY_DISABLED=1
-APP_URL=https://ops.provaliantgroup.com
+APP_URL=https://pulse.provaliantgroup.com
 DATABASE_PATH=/var/lib/ops/data/ops.db
 UPLOADS_DIR=/var/lib/ops/uploads
 PLAYWRIGHT_BROWSERS_PATH=/opt/ops/browsers

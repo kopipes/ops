@@ -7,11 +7,11 @@ afterEach(() => vi.unstubAllEnvs());
 describe("authentication redirects behind the production proxy", () => {
   it.each(["/", "/projects", "/me", "/reports?projectId=example"])('keeps unauthenticated %s on the public HTTPS origin', path => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("APP_URL", "https://ops.provaliantgroup.com");
-    const request = new NextRequest(`http://localhost:4215${path}`, { headers: { host: "ops.provaliantgroup.com", "x-forwarded-host": "attacker.invalid", "x-forwarded-proto": "https" } });
+    vi.stubEnv("APP_URL", "https://pulse.provaliantgroup.com");
+    const request = new NextRequest(`http://localhost:4215${path}`, { headers: { host: "pulse.provaliantgroup.com", "x-forwarded-host": "attacker.invalid", "x-forwarded-proto": "https" } });
     const response = middleware(request);
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://ops.provaliantgroup.com/login");
+    expect(response.headers.get("location")).toBe("https://pulse.provaliantgroup.com/login");
   });
   it("preserves the actual development server port", () => {
     vi.stubEnv("NODE_ENV", "development");
