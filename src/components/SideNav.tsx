@@ -30,12 +30,12 @@ export function SideNav({
       aria-label="Navigasi utama"
       className="nav-rail"
     >
-      <div className="flex items-center gap-3 px-6 pb-8 pt-8">
+      <div className="flex shrink-0 items-center gap-3 px-6 pb-8 pt-8">
         <BrandMark />
         <div><span className="text-[25px] font-semibold tracking-tight text-white">Ops<span className="text-[#8897bc]">.</span></span><p className="text-[9px] tracking-[0.1em] text-[#7f8eaf]">PROVALIANT GROUP</p></div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-4">
+      <nav className="rail-scroll px-4 pb-3">
         <p className="rail-label mb-3">Workspace</p>
         <ul className="flex flex-col gap-1">
           {tabs.map((t) => {
@@ -94,13 +94,12 @@ export function SideNav({
             </ul>
           </div>
         ) : null}
+        {userRole === "admin" || userRole === "manager" ? <div className="mb-2 mt-6 border-t border-white/10 pt-4"><p className="rail-label mb-2">Kelola workspace</p><Link href="/admin/users" className="rail-link" aria-current={isActive("/admin") ? "page" : undefined}><Icon name="shield" size={18} />User & aktivasi</Link><Link href="/master/checklist-items" className="rail-link" aria-current={isActive("/master") ? "page" : undefined}><Icon name="layers" size={18} />Master data</Link></div> : null}
       </nav>
-
-      {userRole === "admin" || userRole === "manager" ? <div className="mx-4 mb-4 mt-6 border-t border-white/10 pt-4"><p className="rail-label mb-2">Kelola workspace</p><Link href="/admin/users" className="rail-link" aria-current={isActive("/admin") ? "page" : undefined}><Icon name="shield" size={18} />User & aktivasi</Link><Link href="/master/checklist-items" className="rail-link" aria-current={isActive("/master") ? "page" : undefined}><Icon name="layers" size={18} />Master data</Link></div> : null}
 
       <Link
         href="/me"
-        className="mx-4 mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3"
+        className="mx-4 mb-5 mt-3 flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3"
       >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"

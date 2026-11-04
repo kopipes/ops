@@ -85,7 +85,12 @@ input[type="submit"] {
   .project-card-footer { @apply mt-5 flex items-center justify-between gap-3 border-t pt-4 text-xs; border-color: var(--border); color: var(--muted); }
   .search-toolbar { @apply mb-5; }
   .search-input { @apply min-h-[48px] w-full rounded-xl border py-3 pl-11 pr-4 text-sm; background: var(--surface); border-color: var(--border); color: var(--fg); box-shadow: var(--shadow); }
-  .nav-rail { @apply hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col; background: #121a2e; color: #d4dbee; }
+  .nav-rail { @apply hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col; background: #121a2e; color: #d4dbee; color-scheme: dark; }
+  .rail-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #46536f transparent; scroll-padding-block: 12px; }
+  .rail-scroll::-webkit-scrollbar { width: 6px; }
+  .rail-scroll::-webkit-scrollbar-track { background: transparent; }
+  .rail-scroll::-webkit-scrollbar-thumb { border-radius: 6px; background: #46536f; }
+  .rail-scroll::-webkit-scrollbar-thumb:hover { background: #697998; }
   .rail-link { @apply flex min-h-tap items-center gap-3 rounded-xl px-3.5 py-3 text-[13px] font-medium; color: #a6b2cc; }
   .rail-link[aria-current="page"] { @apply bg-[#5968ed] text-white; box-shadow: 0 5px 15px #00000012; }
   .rail-label { @apply px-3.5 text-[9px] font-semibold uppercase tracking-[0.18em]; color: #76839e; }
