@@ -241,6 +241,12 @@ export const PROJECT_STATUS_FLOW = {
 
 const projectStatusSchema = z.enum(["draft", "active", "completed", "archived"]);
 
+export const deleteProjectSchema = z.object({
+  projectId: trimmed(1, 100, "Project tidak valid"),
+  confirmationCode: trimmed(1, 80, "Ketik kode project untuk konfirmasi"),
+  reason: trimmed(3, 1000, "Alasan penghapusan harus 3–1000 karakter"),
+});
+
 export const setStatusSchema = z.object({
   projectId: z.string().min(1),
   status: projectStatusSchema,

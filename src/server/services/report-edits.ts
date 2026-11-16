@@ -67,7 +67,7 @@ export async function getEditableReport(
 
   const day = await db.select().from(projectDays).where(eq(projectDays.id, row.projectDayId)).get();
   const project = await db.select().from(projects).where(eq(projects.id, row.projectId)).get();
-  if (!day || !project) return null;
+  if (!day || !project || project.deletedAt !== null) return null;
 
   const facts = await loadFacts(db, row.projectId);
 

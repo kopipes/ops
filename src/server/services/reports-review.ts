@@ -470,7 +470,7 @@ export async function getDayDetail(
   date: string,
 ): Promise<DayDetail | null> {
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
-  if (!project) return null;
+  if (!project || project.deletedAt !== null) return null;
 
   const facts = await loadFacts(db, projectId);
   if (!canViewProject(user, facts)) return null;
@@ -1012,7 +1012,7 @@ export async function isDayEditable(db: DB, projectDayId: string): Promise<boole
   const day = await db.select().from(projectDays).where(eq(projectDays.id, projectDayId)).get();
   if (!day) return false;
   const project = await db.select().from(projects).where(eq(projects.id, day.projectId)).get();
-  if (!project) return false;
+  if (!project || project.deletedAt !== null) return false;
 
   return isReportEditable(
     Date.now(),

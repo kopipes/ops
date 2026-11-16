@@ -4,11 +4,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/server/db";
-import { requireUser } from "@/server/auth/current-user";
+import { requireUser, requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import {
   assignOfficerSchema,
   checkbox,
   dayTypeUpdateSchema,
+  deleteProjectSchema,
   projectInputSchema,
   setMemberRoleSchema,
   setStatusSchema,
@@ -18,6 +19,7 @@ import {
   generateProjectCode,
   loadFacts,
   setProjectStatus,
+  softDeleteProject,
   updateProject,
 } from "@/server/services/projects";
 import {
@@ -70,6 +72,27 @@ export async function suggestProjectCodeAction(divisionId: string): Promise<stri
     divisionCode: division?.code ?? "PRJ",
     year: new Date().getFullYear(),
   });
+}
+
+export async function deleteProjectAction(
+  _prev: ProjectActionState,
+  formData: FormData,
+): Promise<ProjectActionState> {
+  const { user } = await requireUserWithoutPasswordChange();
+  const parsed = deleteProjectSchema.safeParse({
+    projectId: formData.get("projectId"),
+    confirmationCode: formData.get("confirmationCode"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
+  try {
+    await softDeleteProject(getDb(), user, parsed.data.projectId, parsed.data.reason, parsed.data.confirmationCode);
+  } catch (err) {
+    return toError(err);
+  }
+  revalidateProject(parsed.data.projectId);
+  for (const path of ["/issues", "/reports", "/dashboard", "/admin/audit"]) revalidatePath(path);
+  redirect("/projects?deleted=1");
 }
 
 function parseProjectForm(formData: FormData) {

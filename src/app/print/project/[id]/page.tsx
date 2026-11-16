@@ -46,7 +46,7 @@ export default async function PrintRecapPage({
 
   const db = getDb();
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
-  if (!project) notFound();
+  if (!project || project.deletedAt !== null) notFound();
 
   const facts = await loadFacts(db, id);
   if (!canExportPdf(session.user, facts)) notFound();

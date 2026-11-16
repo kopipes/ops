@@ -16,8 +16,9 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Arsip",
 };
 
-export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const query = normalizeSearch((await searchParams).q);
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ q?: string; deleted?: string }> }) {
+  const params = await searchParams;
+  const query = normalizeSearch(params.q);
   const session = await requireUser();
   const db = getDb();
 
@@ -45,6 +46,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   return (
     <AppShell>
       <PageHeader eyebrow="PROJECT WORKSPACE" title="Project" description="Semua project, tim, dan progres operasional dalam satu tempat." action={canCreate ? <Link href="/projects/new" className="btn-primary"><Icon name="plus" size={17} />Project baru</Link> : undefined} />
+      {params.deleted === "1" ? <p role="status" className="mb-5 rounded-xl border border-emerald-600/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Project berhasil dihapus. Riwayat data tetap disimpan untuk audit.</p> : null}
       <div className="project-metrics mb-7 grid grid-cols-3 gap-2 sm:gap-4">
         <MetricCard label={query ? "Hasil pencarian" : "Total project"} value={rows.length} icon="folder" hint="Dalam akses Anda" />
         <MetricCard label="Aktif" value={rows.filter(p => p.status === "active").length} icon="layers" tone="success" hint={query ? "Pada hasil pencarian" : "Operasional berjalan"} />

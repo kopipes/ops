@@ -80,6 +80,9 @@ export function canManageProject(u: ActingUser, p: ProjectFacts): boolean {
 /** §2.3: create project — admin, or manager (scoped to their division at creation time). */
 export const canCreateProject = (u: ActingUser) => u.isActive && (isAdmin(u) || isManager(u));
 
+/** Removing an entire project is reserved for active Admin accounts. */
+export const canDeleteProject = (u: ActingUser) => u.isActive && isAdmin(u);
+
 /** §2.3: assign members — same scope as managing the project. */
 export const canAssignMembers = canManageProject;
 

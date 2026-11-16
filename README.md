@@ -1,5 +1,12 @@
 # Pulse
 
+Admin dapat menghapus project dari halaman detail melalui **Hapus project**.
+Penghapusan memerlukan alasan dan konfirmasi kode project. Project kemudian
+tidak muncul di daftar, dashboard, issues, atau report; akses melalui tautan lama
+juga ditutup. Data terkait dan foto tetap disimpan untuk audit (soft delete),
+beserta catatan siapa yang menghapus, kapan, dan alasannya. Manager, Corporate,
+dan Crew tidak diberi izin menghapus project.
+
 Aplikasi web mobile-first (PWA) untuk memantau jalannya event harian: **Opening → Monitoring → Closing**.
 
 Spesifikasi lengkap ada di [`docs/PRD-Ops.md`](docs/PRD-Ops.md). Dokumen itu adalah sumber kebenaran; README ini hanya panduan operasional.

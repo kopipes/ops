@@ -236,12 +236,12 @@ export async function templateFromProjectAction(
   try {
     const db = getDb();
     const project = await db
-      .select({ id: projects.id, name: projects.name, ownerDivisionId: projects.ownerDivisionId })
+      .select({ id: projects.id, name: projects.name, ownerDivisionId: projects.ownerDivisionId, deletedAt: projects.deletedAt })
       .from(projects)
       .where(eq(projects.id, parsed.data.projectId))
       .get();
 
-    if (!project) return { error: "Project tidak ditemukan" };
+    if (!project || project.deletedAt !== null) return { error: "Project tidak ditemukan" };
 
     const res = await createTemplateFromProject(db, user, parsed.data, {
       projectDivisionId: project.ownerDivisionId,

@@ -130,7 +130,7 @@ export function windowEndFor(phase: Phase, p: { openingWindowEnd: string; closin
  */
 export async function loadSubmitContext(db: DB, input: SubmitInput) {
   const project = await db.select().from(projects).where(eq(projects.id, input.projectId)).get();
-  if (!project) throw new ValidationError("Project tidak ditemukan");
+  if (!project || project.deletedAt !== null) throw new ValidationError("Project tidak ditemukan");
 
   const day = await db.select().from(projectDays).where(eq(projectDays.id, input.projectDayId)).get();
   if (!day || day.projectId !== input.projectId) {

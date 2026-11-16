@@ -46,13 +46,13 @@ export async function exportDailyPdfAction(
   const day = await db.select().from(projectDays).where(eq(projectDays.id, projectDayId)).get();
   if (!day) return { error: "Hari tidak ditemukan" };
 
+  const project = await db.select().from(projects).where(eq(projects.id, day.projectId)).get();
+  if (!project || project.deletedAt !== null) return { error: "Project tidak ditemukan" };
+
   const facts = await loadFacts(db, day.projectId);
   if (!canExportPdf(session.user, facts)) {
     return { error: "Kamu tidak berhak mengekspor laporan ini" };
   }
-
-  const project = await db.select().from(projects).where(eq(projects.id, day.projectId)).get();
-  if (!project) return { error: "Project tidak ditemukan" };
 
   const jar = await headers();
   const origin = pdfOrigin(jar);
@@ -89,7 +89,7 @@ export async function exportProjectPdfAction(
   const clientMode = formData.get("clientMode") === "on";
 
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
-  if (!project) return { error: "Project tidak ditemukan" };
+  if (!project || project.deletedAt !== null) return { error: "Project tidak ditemukan" };
 
   const facts = await loadFacts(db, projectId);
   if (!canExportPdf(session.user, facts)) {

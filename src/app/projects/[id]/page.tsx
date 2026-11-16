@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { DeleteProjectButton } from "@/components/project/DeleteProjectButton";
 import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
 import { exportProjectPdfAction } from "@/app/pdf-actions";
 import { requireUser } from "@/server/auth/current-user";
@@ -16,7 +17,7 @@ import {
 import { loadFacts, listActiveProjectDays } from "@/server/services/projects";
 import { listProjectChecklist } from "@/server/services/project-checklist";
 import { listMembers, listMemberCandidates } from "@/server/services/members";
-import { canExportPdf, canManageProject, canViewProject } from "@/server/permissions";
+import { canDeleteProject, canExportPdf, canManageProject, canViewProject } from "@/server/permissions";
 import { toLocalDate } from "@/lib/datetime";
 import { getGlobalSettings, isWindowEnabled } from "@/server/services/app-settings";
 import {
@@ -31,7 +32,7 @@ import {
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const p = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, id)).get();
+  const p = await db.select({ name: projects.name }).from(projects).where(and(eq(projects.id, id), isNull(projects.deletedAt))).get();
   return { title: p ? `${p.name} — Pulse` : "Project — Pulse" };
 }
 
@@ -137,6 +138,7 @@ export default async function ProjectDetailPage({
             {STATUS_LABEL[project.status]}
           </span>
         </div>
+        {canDeleteProject(session.user) ? <div className="mt-3 flex justify-end"><DeleteProjectButton projectId={id} projectName={project.name} projectCode={project.code} /></div> : null}
       </header>
 
       <nav

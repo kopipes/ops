@@ -18,6 +18,7 @@ import {
   checklistTemplates,
   divisions,
   projectChecklistItems,
+  projects,
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
 import { isAdmin, isManager, type ActingUser } from "@/server/permissions";
@@ -313,7 +314,10 @@ export async function createTemplateFromProject(
   input: TemplateFromProjectInput,
   opts: { projectDivisionId: string; projectName: string },
 ): Promise<{ templateId: string; promotedItems: number; itemCount: number }> {
-  assertCanManage(user, opts.projectDivisionId);
+  const project = db.select({ ownerDivisionId: projects.ownerDivisionId }).from(projects)
+    .where(and(eq(projects.id, input.projectId), isNull(projects.deletedAt))).get();
+  if (!project) throw new ValidationError("Project sumber tidak ditemukan");
+  assertCanManage(user, project.ownerDivisionId);
 
   const snapshot = await db
     .select({

@@ -47,12 +47,12 @@ export default async function PrintDayPage({
   const day = await db.select().from(projectDays).where(eq(projectDays.id, id)).get();
   if (!day) notFound();
 
+  const detail = await getDayDetail(db, session.user, day.projectId, day.date);
+  if (!detail) notFound();
+
   const facts = await loadFacts(db, day.projectId);
   // §2.3: only admin/corporate/manager may export.
   if (!canExportPdf(session.user, facts)) notFound();
-
-  const detail = await getDayDetail(db, session.user, day.projectId, day.date);
-  if (!detail) notFound();
 
   const tz = detail.project.timezone;
 

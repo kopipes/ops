@@ -409,6 +409,14 @@ describe("createTemplateFromProject (§5.2 no.2)", () => {
     });
   });
 
+  it("rejects a deleted source before promoting master items or creating a template", async () => {
+    db.insert(schema.projectChecklistItems).values({ id: "deleted-source-item", projectId: "p1", phase: "opening", categoryName: "Umum", label: "Deleted custom item", isRequired: true, requiresPhoto: false, sortOrder: 0, createdAt: now, updatedAt: now }).run();
+    db.update(schema.projects).set({ deletedAt: now }).where(eq(schema.projects.id, "p1")).run();
+    await expect(createTemplateFromProject(db, admin, { projectId: "p1", name: "Invalid source" }, { projectDivisionId: "d-evt", projectName: "Deleted" })).rejects.toThrow("Project sumber tidak ditemukan");
+    expect(db.select().from(schema.checklistTemplates).all()).toHaveLength(0);
+    expect(db.select().from(schema.checklistItems).all()).toHaveLength(0);
+  });
+
   it("copies linked master items and promotes custom items", async () => {
     const masterId = await createChecklistItem(db, admin, itemInput({ label: "Master one" }));
 

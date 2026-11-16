@@ -75,7 +75,7 @@ export async function loadProjectFacts(
       ownerDivisionId: projects.ownerDivisionId,
     })
     .from(projects)
-    .where(inArray(projects.id, projectIds));
+    .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)));
 
   const divs = await db
     .select({ projectId: projectDivisions.projectId, divisionId: projectDivisions.divisionId })

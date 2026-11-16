@@ -700,11 +700,12 @@ export async function getIssueDetail(
   if (!row) return null;
 
   const project = await db
-    .select({ name: projects.name })
+    .select({ name: projects.name, deletedAt: projects.deletedAt })
     .from(projects)
     .where(eq(projects.id, row.projectId))
     .get();
 
+  if (!project || project.deletedAt !== null) return null;
   const facts = await loadFacts(db, row.projectId);
   // §2.2: reading an issue requires seeing its project.
   if (!canViewProject(user, facts)) return null;

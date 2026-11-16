@@ -9,7 +9,7 @@
  *   we deactivate it and append new rows instead. A submitted report therefore
  *   keeps pointing at exactly the items it was filled against.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
 import {
@@ -18,6 +18,7 @@ import {
   checklistItems,
   checklistTemplateItems,
   projectChecklistItems,
+  projects,
   reportCheckResults,
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
@@ -102,6 +103,9 @@ export async function buildChecklistFromProject(
   db: DB,
   sourceProjectId: string,
 ): Promise<Omit<SnapshotRow, "id" | "projectId">[]> {
+  const source = db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, sourceProjectId), isNull(projects.deletedAt))).get();
+  if (!source) throw new ValidationError("Project sumber tidak ditemukan");
   const rows = await db
     .select()
     .from(projectChecklistItems)

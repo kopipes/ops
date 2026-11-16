@@ -26,10 +26,11 @@ import {
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
 import { addDays, dateRange } from "@/lib/datetime";
-import { PROJECT_STATUS_FLOW, type ProjectInput } from "@/lib/schemas";
+import { deleteProjectSchema, PROJECT_STATUS_FLOW, type ProjectInput } from "@/lib/schemas";
 import type { ProjectStatus } from "@/server/db/schema";
 import {
   canManageProject,
+  canDeleteProject,
   isAdmin,
   isManager,
   type ActingUser,
@@ -459,11 +460,38 @@ export async function autoCompleteExpiredProjects(
 // Reads
 // ---------------------------------------------------------------------------
 
+/** Keep historical rows/files, and record the removal atomically with its audit. */
+export async function softDeleteProject(
+  db: DB,
+  user: ActingUser,
+  projectId: string,
+  reason: string,
+  confirmationCode: string,
+): Promise<void> {
+  if (!canDeleteProject(user)) throw new ForbiddenError("Hanya Admin yang bisa menghapus project");
+  const parsed = deleteProjectSchema.safeParse({ projectId, reason, confirmationCode });
+  if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? "Input tidak valid");
+
+  db.transaction(tx => {
+    const current = tx.select().from(projects)
+      .where(and(eq(projects.id, parsed.data.projectId), isNull(projects.deletedAt))).get();
+    if (!current) throw new ValidationError("Project tidak ditemukan atau sudah dihapus");
+    if (parsed.data.confirmationCode !== current.code) throw new ValidationError("Kode konfirmasi tidak sesuai dengan kode project");
+    const now = Date.now();
+    tx.update(projects).set({ deletedAt: now, updatedAt: now }).where(eq(projects.id, current.id)).run();
+    tx.insert(auditLogs).values({
+      id: randomUUID(), userId: user.id, action: "project.soft_deleted", entityType: "project",
+      entityId: current.id, metaJson: JSON.stringify({ code: current.code, name: current.name, reason: parsed.data.reason }),
+      ip: null, createdAt: now,
+    }).run();
+  });
+}
+
 export async function loadFacts(db: DB, projectId: string): Promise<ProjectFacts> {
   const p = await db
     .select({ id: projects.id, status: projects.status, ownerDivisionId: projects.ownerDivisionId })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .get();
   if (!p) throw new ValidationError("Project tidak ditemukan");
 

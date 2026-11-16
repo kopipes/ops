@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { IssueForm } from "@/components/issues/IssueForm";
@@ -30,13 +30,18 @@ export default async function NewIssuePage({
   const db = getDb();
 
   const ids = await visibleProjectIds(db, session.user);
-  if (ids.length === 0) redirect("/issues");
+  if (ids.length === 0) {
+    if (params.projectId) notFound();
+    redirect("/issues");
+  }
 
   const projectRows = await db
     .select({ id: projects.id, name: projects.name, code: projects.code })
     .from(projects)
     .where(and(inArray(projects.id, ids), isNull(projects.deletedAt)))
     .orderBy(asc(projects.name));
+
+  if (params.projectId && !projectRows.some(project => project.id === params.projectId)) notFound();
 
   const categories = await db
     .select({ id: issueCategories.id, name: issueCategories.name })

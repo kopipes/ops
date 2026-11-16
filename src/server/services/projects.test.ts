@@ -11,7 +11,9 @@ import {
   createProject,
   generateProjectCode,
   listProjectDays,
+  loadFacts,
   setProjectStatus,
+  softDeleteProject,
   syncProjectDays,
   updateProject,
 } from "./projects";
@@ -23,6 +25,9 @@ import {
 } from "./project-checklist";
 import { addMember, listMemberCandidates, listMembers, removeMember, setMemberRole, setMembers } from "./members";
 import type { ProjectInput } from "@/lib/schemas";
+import { loadProjectFacts, visibleProjectIds } from "@/server/visibility";
+import { getDayDetail } from "./reports-review";
+import { getEditableReport } from "./report-edits";
 
 const MIGRATIONS = resolve(process.cwd(), "src/server/db/migrations");
 
@@ -87,6 +92,66 @@ beforeEach(async () => {
 });
 
 afterEach(() => sqlite.close());
+
+describe("Admin project deletion", () => {
+  it.each([mgr, mgrOther, crew, { ...admin, role: "corporate" as const }, { ...admin, isActive: false }])("rejects unauthorized actor $role/$isActive", async actor => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    await expect(softDeleteProject(db, actor, projectId, "Project duplikat", "EVT-2026-0001")).rejects.toThrow("Hanya Admin");
+    expect(db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()?.deletedAt).toBeNull();
+  });
+
+  it.each(["", "   ", "a", "a".repeat(1001)])("requires a valid deletion reason", async reason => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    await expect(softDeleteProject(db, admin, projectId, reason, "EVT-2026-0001")).rejects.toThrow();
+    expect((await loadFacts(db, projectId)).id).toBe(projectId);
+  });
+
+  it("requires the current exact project code and rejects stale or missing projects", async () => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    await expect(softDeleteProject(db, admin, projectId, "Duplikat", "EVT-OTHER")).rejects.toThrow("Kode konfirmasi");
+    await expect(softDeleteProject(db, admin, "missing", "Duplikat", "EVT-OTHER")).rejects.toThrow("tidak ditemukan");
+    expect((await loadFacts(db, projectId)).id).toBe(projectId);
+  });
+
+  it.each(["draft", "active", "completed", "archived"] as const)("soft deletes a %s project with an audit trail and no duplicate audit on retry", async status => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    db.update(schema.projects).set({ status }).where(eq(schema.projects.id, projectId)).run();
+    await softDeleteProject(db, admin, projectId, "  Project duplikat  ", "EVT-2026-0001");
+    const row = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
+    expect(row.deletedAt).toBeGreaterThan(0);
+    expect(row.updatedAt).toBe(row.deletedAt);
+    const audit = db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "project.soft_deleted")).all();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ userId: admin.id, entityId: projectId, entityType: "project" });
+    expect(JSON.parse(audit[0].metaJson!)).toMatchObject({ code: row.code, name: row.name, reason: "Project duplikat" });
+    await expect(softDeleteProject(db, admin, projectId, "Ulangi", row.code)).rejects.toThrow("sudah dihapus");
+    expect(db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "project.soft_deleted")).all()).toHaveLength(1);
+  });
+
+  it("hides deleted projects and denies direct reads/writes while preserving related reports and days", async () => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    const days = await listProjectDays(db, projectId);
+    db.insert(schema.reports).values({ id: "preserved-report", projectId, projectDayId: days[0].id, phase: "opening", submittedBy: crew.id, clientSubmissionId: "preserve-cs", status: "submitted", observedAt: now, submittedAt: now, isLate: false, createdAt: now, updatedAt: now }).run();
+    await softDeleteProject(db, admin, projectId, "Duplikat", "EVT-2026-0001");
+    expect(await visibleProjectIds(db, admin, { includeArchived: true })).not.toContain(projectId);
+    expect((await loadProjectFacts(db, [projectId])).size).toBe(0);
+    await expect(loadFacts(db, projectId)).rejects.toThrow("tidak ditemukan");
+    await expect(updateProject(db, admin, projectId, projectInput())).rejects.toThrow();
+    await expect(setProjectStatus(db, admin, projectId, "completed")).rejects.toThrow();
+    expect(await getDayDetail(db, admin, projectId, days[0].date)).toBeNull();
+    expect(await getEditableReport(db, admin, "preserved-report")).toBeNull();
+    expect(await listProjectDays(db, projectId)).toHaveLength(days.length);
+    expect(db.select().from(schema.reports).where(eq(schema.reports.id, "preserved-report")).get()).toMatchObject({ projectId, deletedAt: null });
+    expect(sqlite.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("rolls back the deletion if its audit cannot be saved", async () => {
+    const { projectId } = await createProject(db, admin, projectInput());
+    sqlite.exec("CREATE TRIGGER reject_delete_audit BEFORE INSERT ON audit_logs WHEN NEW.action = 'project.soft_deleted' BEGIN SELECT RAISE(FAIL, 'audit rejected'); END;");
+    await expect(softDeleteProject(db, admin, projectId, "Duplikat", "EVT-2026-0001")).rejects.toThrow("audit rejected");
+    expect(db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()?.deletedAt).toBeNull();
+  });
+});
 
 describe("project code generation (§6.1)", () => {
   it("starts at 0001 then increments", async () => {
