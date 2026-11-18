@@ -21,6 +21,7 @@ export default async function IssueCategoriesPage() {
     <AppShell>
       <MasterNav active="issue-categories"  isAdmin />
       <CategoryManager
+        entity="issue_category"
         title="Kategori Issue"
         rows={rows}
         saveAction={saveIssueCategoryAction}

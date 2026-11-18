@@ -1,0 +1,39 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
+import { getDb } from "@/server/db";
+import { previewDataRemoval, reactivateMasterData, removeData, removalSchema } from "@/server/services/data-removal";
+import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
+import type { RemovalEntity, RemovalPreview, RemovalState } from "@/lib/data-removal";
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ForbiddenError || err instanceof ValidationError) return err.message;
+  console.error("[data removal]", err);
+  return "Tindakan gagal. Data belum diubah. Coba lagi.";
+}
+
+export async function previewRemovalAction(entity: RemovalEntity, id: string): Promise<{ preview?: RemovalPreview; error?: string }> {
+  const { user } = await requireUserWithoutPasswordChange();
+  try { return { preview: previewDataRemoval(getDb(), user, entity, id) }; }
+  catch (err) { return { error: errorMessage(err) }; }
+}
+
+export async function removeDataAction(_prev: RemovalState, formData: FormData): Promise<RemovalState> {
+  const { user } = await requireUserWithoutPasswordChange();
+  const parsed = removalSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Data tidak valid" };
+  let result: RemovalPreview;
+  try { result = removeData(getDb(), user, parsed.data); }
+  catch (err) { return { error: errorMessage(err) }; }
+  revalidatePath("/", "layout");
+  return { ok: true, message: result.mode === "delete" ? `“${result.name}” berhasil dihapus permanen.` : `“${result.name}” diarsipkan. Riwayat tetap tersimpan.` };
+}
+
+export async function reactivateDataAction(_prev: RemovalState, formData: FormData): Promise<RemovalState> {
+  const { user } = await requireUserWithoutPasswordChange();
+  try { reactivateMasterData(getDb(), user, String(formData.get("entity")) as RemovalEntity, String(formData.get("id") ?? "")); }
+  catch (err) { return { error: errorMessage(err) }; }
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Data diaktifkan kembali." };
+}

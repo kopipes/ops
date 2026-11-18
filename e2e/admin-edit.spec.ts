@@ -119,7 +119,9 @@ test("admin can deactivate a user and their session dies (§14 AC)", async ({ pa
     .first()
     .getByRole("button", { name: "Nonaktifkan" })
     .click();
-  await expect(page.getByText("Nonaktif").first()).toBeVisible();
+  await expect(page.getByText(email, { exact: true })).toHaveCount(0);
+  await page.getByLabel("Tampilkan user nonaktif").check();
+  await expect(page.locator("li", { hasText: email }).getByText("Nonaktif", { exact: true })).toBeVisible();
 
   // The live session must be invalidated immediately.
   await p2.goto(`${BASE}/`);
@@ -172,6 +174,7 @@ test("admin settings persist and feed the project wizard defaults", async ({ pag
   await loginOk(page, "admin@ops.test");
   await page.goto(`${BASE}/admin/settings`);
 
+  await waitForHydration(page, 'input[name="openingWindowEnabled"]');
   const openingWasEnabled = await page.getByLabel("Gunakan window opening", { exact: true }).isChecked();
   const openingStartBefore = await page.locator('input[name="defaultOpeningWindowStart"]').inputValue();
   await page.getByLabel("Gunakan window opening", { exact: true }).check();
@@ -196,9 +199,10 @@ test("admin settings persist and feed the project wizard defaults", async ({ pag
   // left the window enabled when the second submit was skipped.
   await page.goto(`${BASE}/admin/settings`);
   const openingToggle = page.getByLabel("Gunakan window opening", { exact: true });
-  if (openingWasEnabled) await openingToggle.check();
-  else await openingToggle.uncheck();
+  await waitForHydration(page, 'input[name="openingWindowEnabled"]');
+  await openingToggle.check();
   await page.getByLabel("Mulai").first().fill(openingStartBefore);
+  await openingToggle.setChecked(openingWasEnabled);
   await page.getByRole("button", { name: "Simpan setelan" }).click();
   await expect(page.getByText("Setelan tersimpan.")).toBeVisible();
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { RemoveDataButton, useDataRemoval } from "./DataRemoval";
 import type { AdminActionState } from "@/app/admin-actions";
 
 export interface DivisionRowView {
@@ -30,6 +31,8 @@ export function DivisionManager({
   const [state, formAction, pending] = useActionState(saveAction, {} as AdminActionState);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const { requestRemoval, removalNotice, removalDialog } = useDataRemoval();
 
   const editing = rows.find((r) => r.id === editingId);
 
@@ -58,6 +61,8 @@ export function DivisionManager({
         ) : null}
       </div>
 
+      {removalNotice}
+      {removalDialog}
       {showForm ? (
         <form
           action={formAction}
@@ -134,11 +139,13 @@ export function DivisionManager({
         </form>
       ) : null}
 
+      <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />Tampilkan divisi nonaktif</label>
+
       <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
-        {rows.map((d) => (
+        {rows.filter(d => showInactive || d.isActive).map((d) => (
           <li
             key={d.id}
-            className="flex items-start justify-between gap-2 rounded-xl border px-4 py-3"
+            className="flex flex-wrap items-start justify-between gap-2 rounded-xl border px-4 py-3"
             style={{
               borderColor: "var(--border)",
               background: "var(--surface)",
@@ -177,13 +184,14 @@ export function DivisionManager({
                   {d.isActive ? "Nonaktifkan" : "Aktifkan"}
                 </button>
               </form>
+              <RemoveDataButton onClick={() => requestRemoval("division", d.id)} />
             </div>
           </li>
         ))}
       </ul>
 
       <p className="text-xs" style={{ color: "var(--muted)" }}>
-        Divisi tidak bisa dihapus permanen — hanya dinonaktifkan, karena user dan project merujuknya.
+        Divisi yang belum digunakan dapat dihapus permanen. Divisi yang sudah digunakan akan diarsipkan agar riwayat tetap tersimpan.
       </p>
     </div>
   );

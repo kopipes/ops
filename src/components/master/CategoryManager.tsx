@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionState } from "@/app/master-actions";
+import { ReactivateDataButton, RemoveDataButton, useDataRemoval } from "@/components/admin/DataRemoval";
 import { Badge } from "./MasterNav";
 
 export interface CategoryRowView {
@@ -13,6 +14,7 @@ export interface CategoryRowView {
 
 interface Props {
   title: string;
+  entity: "checklist_category" | "issue_category";
   rows: CategoryRowView[];
   saveAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   deactivateAction: (formData: FormData) => Promise<void>;
@@ -27,10 +29,11 @@ const inputStyle = {
   color: "var(--fg)",
 } as const;
 
-export function CategoryManager({ title, rows, saveAction, deactivateAction }: Props) {
+export function CategoryManager({ title, entity, rows, saveAction, deactivateAction }: Props) {
   const [state, formAction, pending] = useActionState(saveAction, {} as ActionState);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const { requestRemoval, removalNotice, removalDialog } = useDataRemoval();
 
   const editing = rows.find((r) => r.id === editingId);
   const visible = showInactive ? rows : rows.filter((r) => r.isActive);
@@ -38,6 +41,8 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">{title}</h1>
+      {removalNotice}
+      {removalDialog}
 
       <form
         action={formAction}
@@ -131,7 +136,7 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
           {visible.map((r) => (
             <li
               key={r.id}
-              className="flex items-center justify-between gap-2 rounded-xl border px-4 py-3"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--surface)",
@@ -144,7 +149,7 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
                   urutan {r.sortOrder}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!r.isActive ? <Badge>Nonaktif</Badge> : null}
                 <button
                   type="button"
@@ -166,6 +171,8 @@ export function CategoryManager({ title, rows, saveAction, deactivateAction }: P
                     </button>
                   </form>
                 ) : null}
+                {!r.isActive ? <ReactivateDataButton entity={entity} id={r.id} /> : null}
+                <RemoveDataButton onClick={() => requestRemoval(entity, r.id)} />
               </div>
             </li>
           ))}

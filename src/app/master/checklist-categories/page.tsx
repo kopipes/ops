@@ -23,6 +23,7 @@ export default async function ChecklistCategoriesPage() {
     <AppShell>
       <MasterNav active="items"  isAdmin />
       <CategoryManager
+        entity="checklist_category"
         title="Kategori Checklist"
         rows={rows}
         saveAction={saveChecklistCategoryAction}

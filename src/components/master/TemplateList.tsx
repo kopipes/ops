@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionState } from "@/app/master-actions";
+import { ReactivateDataButton, RemoveDataButton, useDataRemoval } from "@/components/admin/DataRemoval";
 import { Badge } from "./MasterNav";
 
 export interface TemplateRow {
@@ -15,6 +16,7 @@ export interface TemplateRow {
 }
 
 interface Props {
+  isAdmin: boolean;
   templates: TemplateRow[];
   projects: { id: string; name: string; code: string }[];
   duplicateAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -41,6 +43,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function TemplateList({
+  isAdmin,
   templates,
   projects,
   duplicateAction,
@@ -49,6 +52,9 @@ export function TemplateList({
 }: Props) {
   const [mode, setMode] = useState<"none" | "from-project" | "duplicate">("none");
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const { requestRemoval, removalNotice, removalDialog } = useDataRemoval();
+  const visible = templates.filter(t => showInactive || t.isActive);
 
   const [projState, projFormAction, projPending] = useActionState(fromProjectAction, {} as ActionState);
   const [dupState, dupFormAction, dupPending] = useActionState(duplicateAction, {} as ActionState);
@@ -57,6 +63,8 @@ export function TemplateList({
 
   return (
     <div className="flex flex-col gap-4">
+      {removalNotice}
+      {removalDialog}
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Template Checklist</h1>
       </div>
@@ -182,7 +190,9 @@ export function TemplateList({
         </form>
       ) : null}
 
-      {templates.length === 0 ? (
+      <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />Tampilkan template nonaktif</label>
+
+      {visible.length === 0 ? (
         <p
           className="rounded-xl border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
@@ -191,7 +201,7 @@ export function TemplateList({
         </p>
       ) : (
         <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
-          {templates.map((t) => (
+          {visible.map((t) => (
             <li
               key={t.id}
               className="rounded-xl border px-4 py-3"
@@ -254,6 +264,8 @@ export function TemplateList({
                     </button>
                   </form>
                 ) : null}
+                {isAdmin && !t.isActive ? <ReactivateDataButton entity="template" id={t.id} /> : null}
+                {isAdmin ? <RemoveDataButton onClick={() => requestRemoval("template", t.id)} /> : null}
               </div>
             </li>
           ))}

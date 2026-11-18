@@ -29,6 +29,13 @@
       "when": 1793687567085,
       "tag": "0003_registration_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794960000000,
+      "tag": "0004_template_removal_history",
+      "breakpoints": true
     }
   ]
 }

@@ -33,6 +33,7 @@ import {
   buildChecklistFromTemplates,
   syncProjectChecklist,
 } from "@/server/services/project-checklist";
+import { recordTemplateUsage } from "@/server/services/templates";
 import { projectDays, divisions } from "@/server/db/schema";
 import { canManageProject } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
@@ -285,6 +286,9 @@ export async function saveProjectChecklistAction(
       divisionId: facts.ownerDivisionId,
     });
 
+    if (formData.get("checklistSource") === "template") {
+      recordTemplateUsage(db, user, projectId, formData.getAll("templateIds").map(String).filter(Boolean));
+    }
     revalidateProject(projectId);
     return { ok: true, projectId };
   } catch (err) {

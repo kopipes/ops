@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { RemoveDataButton, useDataRemoval } from "@/components/admin/DataRemoval";
 import { ItemForm, type ItemFormValues } from "./ItemForm";
 import { Badge } from "./MasterNav";
 import { phaseLabel } from "@/lib/schemas";
@@ -53,6 +54,7 @@ export function ChecklistItemList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [search, setSearch] = useState("");
+  const { requestRemoval, removalNotice, removalDialog } = useDataRemoval();
 
   const query = search.trim().toLowerCase();
 
@@ -153,6 +155,7 @@ export function ChecklistItemList({
                 {item.isActive ? "Nonaktifkan" : "Aktifkan"}
               </button>
             </form>
+            {isAdmin && item.id ? <RemoveDataButton onClick={() => requestRemoval("checklist_item", item.id!)} /> : null}
           </div>
         </td>
       </tr>
@@ -160,6 +163,8 @@ export function ChecklistItemList({
 
   return (
     <div className="flex flex-col gap-4">
+      {removalNotice}
+      {removalDialog}
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Master Checklist</h1>
         {!creating && !editing ? (
@@ -398,6 +403,7 @@ export function ChecklistItemList({
                       {item.isActive ? "Nonaktifkan" : "Aktifkan"}
                     </button>
                   </form>
+                  {isAdmin && item.id ? <RemoveDataButton onClick={() => requestRemoval("checklist_item", item.id!)} /> : null}
                 </div>
               </li>
             ))}
@@ -406,7 +412,7 @@ export function ChecklistItemList({
       )}
 
       <p className="text-xs" style={{ color: "var(--muted)" }}>
-        Item tidak pernah dihapus permanen — hanya dinonaktifkan (§5.1). Menonaktifkan item tidak
+        Item yang belum digunakan dapat dihapus permanen. Item yang sudah digunakan akan diarsipkan. Menonaktifkan item tidak
         mengubah checklist project yang sudah ada.
       </p>
     </div>

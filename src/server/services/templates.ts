@@ -530,3 +530,12 @@ async function audit(
     createdAt: Date.now(),
   });
 }
+
+/** Keep usage even if a template is later edited to entirely different items. */
+export function recordTemplateUsage(db: DB, user: ActingUser, projectId: string, templateIds: string[]): void {
+  db.transaction(tx => {
+    for (const templateId of new Set(templateIds)) {
+      tx.insert(auditLogs).values({ id: randomUUID(), userId: user.id, action: "template.used", entityType: "template", entityId: templateId, metaJson: JSON.stringify({ projectId }), createdAt: Date.now() }).run();
+    }
+  });
+}

@@ -14,6 +14,7 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { recordTemplateUsage } from "./templates";
 import {
   auditLogs,
   issues,
@@ -271,6 +272,10 @@ export async function createProject(
     members: input.members.length,
     days: days.inserted,
   });
+
+  if (input.checklistSource === "template") {
+    recordTemplateUsage(db, user, id, input.templateIds);
+  }
 
   return { projectId: id, days };
 }

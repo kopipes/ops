@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { RemoveDataButton, useDataRemoval } from "./DataRemoval";
 import type { AdminActionState } from "@/app/admin-actions";
 
 export interface UserRowView {
@@ -81,6 +82,8 @@ export function UserManager({
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showPending, setShowPending] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const { requestRemoval, removalNotice, removalDialog } = useDataRemoval();
 
   const editing = rows.find((r) => r.id === editingId);
 
@@ -93,6 +96,7 @@ export function UserManager({
   }, [state.ok]);
 
   const visible = rows.filter((r) => {
+    if (!showInactive && !r.isActive && !r.pendingApproval) return false;
     if (showPending && !r.pendingApproval) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -116,6 +120,9 @@ export function UserManager({
           </button>
         ) : null}
       </div>
+
+      {removalNotice}
+      {removalDialog}
 
       {showForm ? (
         <form
@@ -270,6 +277,8 @@ export function UserManager({
 
       <button type="button" aria-pressed={showPending} onClick={() => setShowPending(value => !value)} className="min-h-tap self-start rounded-lg border px-3 text-sm" style={{ borderColor: "var(--border)", background: showPending ? "var(--accent-solid)" : "var(--surface)", color: showPending ? "#fff" : "var(--fg)" }}>Menunggu aktivasi ({rows.filter(user => user.pendingApproval).length})</button>
 
+      <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />Tampilkan user nonaktif</label>
+
       <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
         {visible.map((u) => (
           <li
@@ -346,6 +355,7 @@ export function UserManager({
               {u.id !== currentUserId ? (
                 <ActivationControl user={u} action={toggleAction} />
               ) : null}
+              {canAdminister && u.id !== currentUserId ? <RemoveDataButton onClick={() => requestRemoval("user", u.id)} /> : null}
             </div>
 
             {canAdminister && resettingId === u.id ? (

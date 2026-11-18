@@ -39,6 +39,7 @@ export default async function TemplatesPage() {
     <AppShell>
       <MasterNav active="templates" isAdmin={isAdmin(session.user)} />
       <TemplateList
+        isAdmin={isAdmin(session.user)}
         templates={templates.map((t) => ({
           id: t.id,
           name: t.name,

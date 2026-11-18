@@ -1,5 +1,20 @@
 # Pulse
 
+Admin dapat memakai **Hapus** pada User, Divisi, item checklist, kategori checklist,
+kategori issue, dan template. Dialog memeriksa hubungan data: data yang belum
+digunakan dihapus permanen; data yang masih dirujuk (termasuk riwayat nonaktif /
+project terhapus) diarsipkan dengan `is_active=0`. Daftar utama menyembunyikan data
+nonaktif; gunakan filter nonaktif untuk melihat arsip. Registrasi yang menunggu
+aktivasi tetap ditampilkan. Nama data dan alasan wajib dikonfirmasi, dan audit
+tersimpan dalam transaksi yang sama. Arsip user langsung mencabut semua sesi;
+akun sendiri dan Admin terakhir dilindungi. Manager tidak memiliki aksi Hapus.
+Template yang sudah ada sebelum fitur ini dilindungi secara konservatif melalui
+penanda audit `template.legacy_retained`, karena penggunaan lamanya belum selalu
+tercatat. Pemakaian template baru (termasuk saat mengganti checklist project)
+dicatat sebagai `template.used`. Kategori dan template yang diarsipkan dapat
+diaktifkan kembali dari filter nonaktif.
+
+
 Admin dapat menghapus project dari halaman detail melalui **Hapus project**.
 Penghapusan memerlukan alasan dan konfirmasi kode project. Project kemudian
 tidak muncul di daftar, dashboard, issues, atau report; akses melalui tautan lama
@@ -213,7 +228,7 @@ subresource/redirect ke origin lain.
 | `/master/issue-categories` | admin | Kategori issue |
 
 Aturan penting yang sudah ditegakkan di server:
-- Item **tidak pernah dihapus permanen** — hanya dinonaktifkan (§5.1). Menonaktifkan item master tidak mengubah checklist project yang sudah ada.
+- Item **yang sudah dipakai tidak dihapus permanen** — hanya dinonaktifkan/diarsipkan. Admin dapat menghapus item yang belum digunakan dengan konfirmasi. Menonaktifkan item master tidak mengubah checklist project yang sudah ada.
 - Manager hanya bisa mengelola item/template **divisinya**; item & template global hanya Admin.
 - Memindahkan item antar divisi hanya Admin.
 - Template tidak boleh merujuk item dari divisi yang tidak bisa dilihat user.

@@ -107,6 +107,8 @@ test("registration requires scoped approval, and Manager cannot edit Admin", asy
 
     // Revoking the account also revokes an already signed-in session.
     await row.getByRole("button", { name: "Nonaktifkan", exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await manager.getByLabel("Tampilkan user nonaktif").check();
     await expect(row.getByText("Nonaktif", { exact: true })).toBeVisible();
     await crew.goto("/");
     await expect(crew).toHaveURL(/\/login/);
