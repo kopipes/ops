@@ -3,6 +3,7 @@
 import {PhotoGallery} from "@/components/reports/PhotoGallery";
 import {compressPhoto} from "@/lib/image-compression";
 import { useEffect, useState } from "react";
+import type {GeneralPhotoGroup} from "@/server/services/report-edits";
 import type { EditReportState } from "@/app/edit-actions";
 
 const actionLabels={re_check:"Re-check",re_take_photo:"Re-take photo",others:"Others"};
@@ -21,6 +22,7 @@ export interface EditableResult {
 
 export function EditReportForm({
   action,
+  generalPhotos,
   projectId,
   projectDayId,
   updatedAt,
@@ -34,6 +36,7 @@ export function EditReportForm({
   results,
 }: {
   action: (prev: EditReportState, formData: FormData) => Promise<EditReportState>;
+  generalPhotos:GeneralPhotoGroup[];
   projectId:string;
   projectDayId:string;
   updatedAt:number;
@@ -184,6 +187,18 @@ export function EditReportForm({
           );
         })}
       </ul>
+
+      {generalPhotos.length?<section><h2 className="mb-2 text-sm font-semibold">Foto laporan</h2><div className="flex flex-col gap-3">{generalPhotos.map((photo,index)=>{
+        const key=`general:${photo.id}`;const added=uploads[key]??[];
+        return <div id={`edit-photo-${photo.id}`} key={photo.id} className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 target:ring-2 target:ring-[var(--accent)]">
+          <p className="text-sm font-medium">Foto {index+1}</p>
+          {photo.review?.verdict==="not_ok"?<div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><p className="text-xs font-semibold">Permintaan reviewer{photo.review.action?` · ${actionLabels[photo.review.action]}`:""}</p><p className="mt-1 whitespace-pre-wrap">{photo.review.note}</p></div>:null}
+          <PhotoGallery photos={[...added,...photo.photoIds].map((id,i)=>({id,label:`Foto ${index+1} — ${i+1}`}))}/>
+          {added.map(id=><input type="hidden" key={id} name={`replacement_${photo.id}`} value={id}/>)}
+          <p className="mt-2 text-xs text-[var(--muted)]">Tambah foto pengganti. Foto asli tetap tersimpan.</p>
+          <div className="mt-2 flex flex-wrap gap-2"><label className="btn-secondary cursor-pointer text-xs">Ambil foto baru<input type="file" aria-label={`Ambil foto perbaikan Foto ${index+1}`} accept="image/*" capture="environment" className="sr-only" disabled={!hydrated||pending||uploading>0} onChange={e=>{void upload(key,e.target.files,"camera");e.target.value="";}}/></label><label className="btn-secondary cursor-pointer text-xs">Pilih foto<input type="file" aria-label={`Pilih foto perbaikan Foto ${index+1}`} accept="image/*" multiple className="sr-only" disabled={!hydrated||pending||uploading>0} onChange={e=>{void upload(key,e.target.files,"gallery");e.target.value="";}}/></label></div>
+        </div>;
+      })}</div></section>:null}
 
       <label className="flex flex-col gap-1">
         <span className="text-sm" style={{ color: "var(--muted)" }}>

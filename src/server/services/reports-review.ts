@@ -42,6 +42,7 @@ import { editDeadline, toLocalDate } from "@/lib/datetime";
 import { isReportEditable } from "@/server/permissions";
 
 import {currentProjectAccess} from "./project-access";
+import {photoFeedback,photoContentHash} from "./photo-reviews";
 import {pointContentHash, type PointReview} from "./checklist-reviews";
 
 type DB = BetterSQLite3Database<typeof schema>;
@@ -448,7 +449,7 @@ export interface ReportBlock {
     contentHash: string;
     reviews: PointReview[];
   }[];
-  photos: GalleryPhoto[];
+  photos: (GalleryPhoto & {replacementIds:string[];reviews:PointReview[];contentHash:string})[];
 }
 
 export interface IssueCard {
@@ -549,6 +550,7 @@ export async function getDayDetail(
       id: photos.id,
       ownerType: photos.ownerType,
       ownerId: photos.ownerId,
+      replacesPhotoId:photos.replacesPhotoId,
       uploadedBy: photos.uploadedBy,
       takenAt: photos.takenAt,
       createdAt: photos.createdAt,
@@ -626,6 +628,8 @@ export async function getDayDetail(
     .innerJoin(users,eq(users.id,checkResultReviews.userId)).where(inArray(checkResultReviews.checkResultId,results.map(r=>r.id)))
     .orderBy(desc(checkResultReviews.createdAt),desc(checkResultReviews.id)) : [];
 
+  const photoReviews=photoFeedback(db,dayPhotos.filter(p=>p.ownerType==="report").map(p=>p.id));
+
   const buildBlock = (report: typeof dayReports[number]): ReportBlock => {
     const phase = report.phase;
     const blockResults = results
@@ -661,7 +665,10 @@ export async function getDayDetail(
         contentHash:pointContentHash(r.result,r.note,dayPhotos.filter(p=>p.ownerType==="check_result"&&p.ownerId===r.id).map(p=>p.id)),
         reviews:pointReviews.filter(review=>review.checkResultId===r.id),
       })),
-      photos: gallery.filter((p) => p.reportId === report.id && dayPhotos.some(raw=>raw.id===p.id&&raw.ownerType==="report")),
+      photos: gallery.filter((p) => p.reportId === report.id && dayPhotos.some(raw=>raw.id===p.id&&raw.ownerType==="report"&&!raw.replacesPhotoId)).map(photo=>{
+        const replacementIds=dayPhotos.filter(p=>p.ownerType==="report"&&p.ownerId===report.id&&p.replacesPhotoId===photo.id).sort((a,b)=>b.createdAt-a.createdAt).map(p=>p.id);
+        return {...photo,replacementIds,reviews:photoReviews.filter(r=>r.photoId===photo.id),contentHash:photoContentHash(photo.id,replacementIds)};
+      }),
     };
   };
 

@@ -8,6 +8,8 @@ import * as schema from "@/server/db/schema";
 import type {ActingUser} from "@/server/permissions";
 import {visibleProjectIds} from "@/server/visibility";
 import {addPointReview,listReviewNotifications,unreadReviewCount,openReviewNotification,pointContentHash} from "./checklist-reviews";
+import {addPhotoReview,photoContentHash,listPhotoNotifications,unreadPhotoCount,openPhotoNotification} from './photo-reviews';
+import {listAllReviewNotifications,allUnreadReviewCount} from './all-review-notifications';
 import {getDayDetail,getDailySummary,markDayReviewed,dayReviewVersion} from "./reports-review";
 import {applyReportEdit,getEditableReport} from "./report-edits";
 let raw:Database.Database;let db:ReturnType<typeof drizzle<typeof schema>>;
@@ -104,6 +106,45 @@ describe('unlocked editing and exact correction',()=>{
   photo('stolen','report','other','other');
   await expect(applyReportEdit(db,raw,crew,'r',{notes:'x',results:[{projectChecklistItemId:'item',result:'ok',note:null,photoIds:['stolen']}]})).rejects.toThrow(/Photo|Foto/);
   await expect(applyReportEdit(db,raw,crew,'r',{expectedUpdatedAt:1,notes:'x',results:[{projectChecklistItemId:'item',result:'ok',note:null,photoIds:[]}]})).rejects.toThrow(/diubah/);
+  expect(raw.prepare('select count(*) n from report_revisions').get()).toEqual({n:0});
+ });
+});
+
+describe('general report photos, including monitoring without checklist answers',()=>{
+ const feedback=(photoId='original',over:Partial<Parameters<typeof addPhotoReview>[2]>={})=>({id:randomUUID(),photoId,verdict:'not_ok',action:'re_take_photo',note:'Foto sisi kiri buram',contentHash:photoContentHash(photoId,[]),...over});
+ it('reviews a general photo and notifies the original author without needing a checklist',async()=>{
+  raw.prepare('delete from report_check_results').run();photo('original','report','r');
+  const request=feedback();addPhotoReview(db,manager,request);addPhotoReview(db,manager,request);
+  expect(unreadPhotoCount(db,crew)).toBe(1);expect(allUnreadReviewCount(db,crew)).toBe(1);
+  const notification=listPhotoNotifications(db,crew)[0];expect(listAllReviewNotifications(db,crew)[0].kind).toBe('photo');
+  expect(openPhotoNotification(db,crew,notification.id)).toBe('/reports/day/day#photo-original');expect(unreadPhotoCount(db,crew)).toBe(0);
+  expect(()=>openPhotoNotification(db,actor('other'),notification.id)).toThrow();
+  const detail=await getDayDetail(db,crew,'p','2026-11-18');expect(detail!.monitoring[0].results).toEqual([]);expect(detail!.monitoring[0].photos[0].reviews[0].note).toBe('Foto sisi kiri buram');
+ });
+ it('adds a linked replacement with version history, retains original, and marks the photo review stale',async()=>{
+  photo('original','report','r');photo('replacement');addPhotoReview(db,manager,feedback());
+  await applyReportEdit(db,raw,crew,'r',{notes:null,results:[{projectChecklistItemId:'item',result:'ok',note:null,photoIds:[]}],replacementPhotos:[{photoId:'replacement',targetPhotoId:'original'}]});
+  const detail=await getDayDetail(db,crew,'p','2026-11-18');const group=detail!.monitoring[0].photos[0];expect(detail!.monitoring[0].photos).toHaveLength(1);expect(group.replacementIds).toEqual(['replacement']);expect(group.contentHash).not.toBe(group.reviews[0].contentHash);
+  expect(raw.prepare("select owner_id,replaces_photo_id from photos where id='replacement'").get()).toEqual({owner_id:'r',replaces_photo_id:'original'});expect(raw.prepare("select deleted_at from photos where id='original'").get()).toEqual({deleted_at:null});
+  expect((await getEditableReport(db,crew,'r'))!.report.editCount).toBe(1);
+  expect(()=>addPhotoReview(db,manager,feedback())).toThrow(/berubah/);
+  addPhotoReview(db,admin,feedback('original',{verdict:'ok',action:'',note:'Sudah jelas',contentHash:group.contentHash}));
+  expect((await getDayDetail(db,crew,'p','2026-11-18'))!.monitoring[0].photos[0].reviews).toHaveLength(2);
+ });
+ it('rejects provisional, per-checklist, deleted, nonmember and stale account photo review targets',()=>{
+  photo('draft');photo('point','check_result','rc');photo('original','report','r');
+  expect(()=>addPhotoReview(db,manager,feedback('draft'))).toThrow();expect(()=>addPhotoReview(db,manager,feedback('point'))).toThrow();expect(()=>addPhotoReview(db,actor('outsider','manager'),feedback())).toThrow();
+  raw.prepare("update users set role='user' where id='m'").run();expect(()=>addPhotoReview(db,manager,feedback())).toThrow();
+  raw.prepare("update photos set deleted_at=1 where id='original'").run();expect(()=>addPhotoReview(db,admin,feedback())).toThrow();
+ });
+ it('does not notify self and hides existing photo notifications after membership is revoked',()=>{
+  photo('original','report','r');raw.prepare("update reports set submitted_by='m'").run();addPhotoReview(db,manager,feedback());expect(unreadPhotoCount(db,manager)).toBe(0);
+  raw.prepare("update reports set submitted_by='c'").run();addPhotoReview(db,admin,feedback());const id=listPhotoNotifications(db,crew)[0].id;
+  raw.prepare("update project_members set is_active=0 where user_id='c'").run();expect(listPhotoNotifications(db,crew)).toEqual([]);expect(()=>openPhotoNotification(db,crew,id)).toThrow();
+ });
+ it('rejects a replacement of another report photo and leaves both reports untouched',async()=>{
+  photo('original','report','another-report');photo('new');
+  await expect(applyReportEdit(db,raw,crew,'r',{notes:'x',results:[{projectChecklistItemId:'item',result:'ok',note:null,photoIds:[]}],replacementPhotos:[{photoId:'new',targetPhotoId:'original'}]})).rejects.toThrow(/asal/);
   expect(raw.prepare('select count(*) n from report_revisions').get()).toEqual({n:0});
  });
 });

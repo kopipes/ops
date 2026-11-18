@@ -70,7 +70,9 @@ export async function pointReviewAction(_prev:ReviewActionState,formData:FormDat
   const session=await requireUser();
   const {addPointReview}=await import("@/server/services/checklist-reviews");
   try {
-    const result=addPointReview(getDb(),session.user,{
+    const {addPhotoReview}=await import("@/server/services/photo-reviews");
+    const common={id:String(formData.get("id")??""),verdict:String(formData.get("verdict")??""),action:String(formData.get("action")??""),note:String(formData.get("note")??""),contentHash:String(formData.get("contentHash")??"")};
+    const result=formData.has("photoId") ? addPhotoReview(getDb(),session.user,{...common,photoId:String(formData.get("photoId")??"")}) : addPointReview(getDb(),session.user,{
       id:String(formData.get("id")??""),checkResultId:String(formData.get("checkResultId")??""),
       verdict:String(formData.get("verdict")??""),action:String(formData.get("action")??""),note:String(formData.get("note")??""),contentHash:String(formData.get("contentHash")??""),
     });

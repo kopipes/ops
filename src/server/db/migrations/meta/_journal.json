@@ -50,6 +50,13 @@
       "when": 1795006800000,
       "tag": "0006_checklist_point_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795010400000,
+      "tag": "0007_report_photo_reviews",
+      "breakpoints": true
     }
   ]
 }

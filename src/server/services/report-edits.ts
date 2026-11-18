@@ -29,11 +29,14 @@ import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
 import { validateResults, type CheckResultInput } from "./reports";
 
+import {photoFeedback} from "./photo-reviews";
 import {currentProjectAccess} from "./project-access";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
+export interface GeneralPhotoGroup {id:string;photoIds:string[];review:{verdict:"ok"|"not_ok";action:"re_check"|"re_take_photo"|"others"|null;note:string|null}|null;}
 export interface EditableReport {
+  generalPhotos:GeneralPhotoGroup[];
   projectId: string;
   updatedAt: number;
   timezone: string;
@@ -118,8 +121,9 @@ export async function getEditableReport(
     .get();
 
   const photoOwners=[row.id,...results.map(r=>r.checkResultId)];
-  const attachedPhotos=await db.select({id:photos.id,ownerId:photos.ownerId,ownerType:photos.ownerType}).from(photos).where(and(inArray(photos.ownerId,photoOwners),eq(photos.projectId,row.projectId),isNull(photos.deletedAt))).orderBy(desc(photos.createdAt));
+  const attachedPhotos=await db.select({id:photos.id,ownerId:photos.ownerId,ownerType:photos.ownerType,replacesPhotoId:photos.replacesPhotoId}).from(photos).where(and(inArray(photos.ownerId,photoOwners),eq(photos.projectId,row.projectId),isNull(photos.deletedAt))).orderBy(desc(photos.createdAt));
   const feedback=results.length ? await db.select().from(checkResultReviews).where(inArray(checkResultReviews.checkResultId,results.map(r=>r.checkResultId))).orderBy(desc(checkResultReviews.createdAt),desc(checkResultReviews.id)) : [];
+  const generalReviews=photoFeedback(db,attachedPhotos.filter(p=>p.ownerType==="report").map(p=>p.id));
   const lastRevision = revisions[revisions.length - 1];
   const lastEditor = lastRevision?.editedBy
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, lastRevision.editedBy)).get()
@@ -147,6 +151,7 @@ export async function getEditableReport(
 
   return {
     report: {
+      generalPhotos:attachedPhotos.filter(p=>p.ownerType==="report"&&!p.replacesPhotoId).map(photo=>({id:photo.id,photoIds:[...attachedPhotos.filter(p=>p.replacesPhotoId===photo.id).map(p=>p.id),photo.id],review:generalReviews.find(review=>review.photoId===photo.id)??null})),
       projectId:row.projectId,
       updatedAt:row.updatedAt,
       timezone: project.timezone,
@@ -196,14 +201,16 @@ export async function applyReportEdit(
   raw: Database.Database,
   user: ActingUser,
   reportId: string,
-  input: { notes: string | null; results: CheckResultInput[]; expectedUpdatedAt?:number; observedAt?: number; phaseNote?: string | null; handoverNote?: string | null },
+  input: { notes: string | null; results: CheckResultInput[]; expectedUpdatedAt?:number; replacementPhotos?:{photoId:string;targetPhotoId:string}[]; observedAt?: number; phaseNote?: string | null; handoverNote?: string | null },
 ): Promise<void> {
   const loaded = await getEditableReport(db, user, reportId);
   if (!loaded) throw new ValidationError("Laporan tidak ditemukan");
   if (!loaded.canEdit) throw new ForbiddenError(loaded.editBlockedReason ?? "Tidak bisa mengedit");
 
   if(input.expectedUpdatedAt!==undefined && input.expectedUpdatedAt!==loaded.report.updatedAt)throw new ValidationError("Laporan baru diubah oleh pengguna lain. Muat ulang sebelum menyimpan.");
-  const addedPhotos=input.results.flatMap(r=>r.photoIds);
+  const replacementPhotos=input.replacementPhotos??[];
+  const addedPhotos=[...input.results.flatMap(r=>r.photoIds),...replacementPhotos.map(p=>p.photoId)];
+  for(const replacement of replacementPhotos)if(!loaded.report.generalPhotos.some(photo=>photo.id===replacement.targetPhotoId))throw new ValidationError("Foto asal bukan foto laporan ini");
   if(new Set(addedPhotos).size!==addedPhotos.length)throw new ValidationError("Satu foto hanya boleh ditambahkan ke satu poin");
   for(const id of addedPhotos) {
     if(!raw.prepare("select id from photos where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").get(id,user.id,user.id,loaded.report.projectId,loaded.report.projectDayId))throw new ValidationError("Foto baru tidak tersedia untuk laporan ini. Unggah ulang foto.");
@@ -257,6 +264,7 @@ export async function applyReportEdit(
     phaseNote: loaded.report.phaseNote,
     handoverNote: loaded.report.handoverNote,
     notes: loaded.report.notes,
+    generalPhotos:loaded.report.generalPhotos.map(p=>({id:p.id,photoIds:p.photoIds})),
     results: loaded.report.results.map((r) => ({
       projectChecklistItemId: r.projectChecklistItemId,
       label: r.label,
@@ -275,6 +283,7 @@ export async function applyReportEdit(
   if(handoverNote!==snapshot.handoverNote)changes.push({projectChecklistItemId:"report",label:"Handover",field:"handoverNote",from:snapshot.handoverNote,to:handoverNote});
   if(phaseNote!==snapshot.phaseNote)changes.push({projectChecklistItemId:"report",label:"Isi laporan",field:"phaseNote",from:snapshot.phaseNote,to:phaseNote});
   for(const r of input.results)if(r.photoIds.length)changes.push({projectChecklistItemId:r.projectChecklistItemId,label:rows.find(row=>row.id===r.projectChecklistItemId)?.label??"Foto",field:"photos",from:null,to:`${r.photoIds.length} foto perbaikan ditambahkan`});
+  for(const photo of replacementPhotos)changes.push({projectChecklistItemId:`photo:${photo.targetPhotoId}`,label:"Foto laporan",field:"photos",from:photo.targetPhotoId,to:photo.photoId});
   if (snapshot.notes === input.notes && changes.length === 0) {
     throw new ValidationError("Tidak ada perubahan");
   }
@@ -320,6 +329,13 @@ export async function applyReportEdit(
         const claim=raw.prepare("update photos set owner_type='check_result',owner_id=? where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").run(target.checkResultId,id,user.id,user.id,loaded.report.projectId,loaded.report.projectDayId);
         if(claim.changes!==1)throw new ValidationError("Foto sudah digunakan. Unggah foto baru.");
       }
+    }
+
+    for(const photo of replacementPhotos) {
+      const original=raw.prepare("select id from photos where id=? and owner_type='report' and owner_id=? and project_id=? and project_day_id=? and replaces_photo_id is null and deleted_at is null").get(photo.targetPhotoId,reportId,loaded.report.projectId,loaded.report.projectDayId);
+      if(!original)throw new ValidationError("Foto asal sudah berubah. Muat ulang halaman.");
+      const claim=raw.prepare("update photos set owner_type='report',owner_id=?,replaces_photo_id=? where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").run(reportId,photo.targetPhotoId,photo.photoId,user.id,user.id,loaded.report.projectId,loaded.report.projectDayId);
+      if(claim.changes!==1)throw new ValidationError("Foto perbaikan sudah digunakan. Unggah ulang.");
     }
 
     raw

@@ -2,8 +2,7 @@ import type { ReportBlock } from "@/server/services/reports-review";
 
 import {PhotoGallery} from "./PhotoGallery";
 import {PointReviewForm} from "@/components/review/PointReviewForm";
-import {REVIEW_ACTION_LABELS} from "@/server/services/checklist-reviews";
-import {formatReportTimestamp} from "@/lib/datetime";
+import {ReviewFeedback} from "./ReviewFeedback";
 
 const styles = {
   ok: { label: "OK", bg: "#dcfce7", fg: "#166534" },
@@ -36,15 +35,7 @@ export function ReportChecklist({ reportId, phase, results, issueContext, canRev
             {result.result === "not_ok" && issueContext ? <a href={`/issues/new?${new URLSearchParams({...issueContext,reportId,checkResultId:result.id,title:result.label,description:result.note??""}).toString()}`} className="mt-2 inline-flex min-h-tap items-center rounded-lg border border-red-700/20 px-3 text-xs text-red-800">Jadikan Issue</a> : null}
             {result.note ? <p className="mt-1 whitespace-pre-wrap text-xs" style={{ color: "var(--muted)" }}>{result.note}</p> : null}
             <PhotoGallery small photos={result.photoIds.map((id,index)=>({id,label:`${result.label} — foto ${index+1}`}))}/>
-            {result.reviews.length ? <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-              <p className="text-xs font-semibold">Hasil review: {result.reviews[0].verdict==="ok"?"OK":"Tidak OK — perlu perbaikan"}</p>
-              {result.reviews[0].contentHash!==result.contentHash?<p className="mt-1 text-xs font-medium text-amber-700">Sudah diperbarui — perlu review ulang</p>:null}
-              {result.reviews[0].action?<p className="mt-1 text-xs font-medium">{REVIEW_ACTION_LABELS[result.reviews[0].action]}</p>:null}
-              {result.reviews[0].note?<p className="mt-1 whitespace-pre-wrap text-sm">{result.reviews[0].note}</p>:null}
-              <p className="mt-2 text-[11px] text-[var(--muted)]">{result.reviews[0].authorName} · {formatReportTimestamp(result.reviews[0].createdAt,timezone)}</p>
-              {canEdit&&issueContext&&result.reviews[0].verdict==="not_ok"?<a href={`/reports/edit/${reportId}#edit-point-${result.id}`} className="mt-2 inline-flex min-h-tap items-center text-xs font-medium text-[var(--accent)]">Buka laporan untuk perbaikan →</a>:null}
-              {result.reviews.length>1?<details className="mt-2 text-xs"><summary className="cursor-pointer py-2">Riwayat review ({result.reviews.length})</summary>{result.reviews.slice(1).map(review=><div key={review.id} className="border-t border-[var(--border)] py-2"><p>{review.authorName} · {formatReportTimestamp(review.createdAt,timezone)} · {review.verdict==="ok"?"OK":"Tidak OK"}{review.action?` · ${REVIEW_ACTION_LABELS[review.action]}`:""}</p><p className="mt-1 whitespace-pre-wrap">{review.note}</p></div>)}</details>:null}
-            </div>:null}
+            <ReviewFeedback reviews={result.reviews} contentHash={result.contentHash} timezone={timezone} editHref={canEdit&&issueContext?`/reports/edit/${reportId}#edit-point-${result.id}`:undefined}/>
             {canReview?<PointReviewForm key={result.contentHash} checkResultId={result.id} contentHash={result.contentHash}/>:null}
           </li>;
         })}

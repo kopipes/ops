@@ -10,6 +10,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  type AnySQLiteColumn,
   index,
   integer,
   primaryKey,
@@ -432,6 +433,8 @@ export const photos = sqliteTable("photos", {
   sizeBytes: integer("size_bytes").notNull(),
   /** Recorded because camera vs gallery matters for review context (§8.1). */
   source: text("source", { enum: ["camera", "gallery"] }).notNull(),
+  /** A repair photo points to the original evidence; old files remain intact. */
+  replacesPhotoId:text("replaces_photo_id").references(():AnySQLiteColumn=>photos.id),
   /** §8.4 idempotency key from the offline upload queue. */
   clientUploadId: text("client_upload_id"),
   takenAt: ts("taken_at"),
@@ -440,6 +443,7 @@ export const photos = sqliteTable("photos", {
   deletedBy: text("deleted_by").references(() => users.id),
   createdAt,
 }, (t) => ({
+  replacesIx:index("photos_replaces_ix").on(t.replacesPhotoId),
   ownerIx: index("photos_owner_ix").on(t.ownerType, t.ownerId),
   clientUploadUx: uniqueIndex("photos_client_upload_ux")
     .on(t.clientUploadId)
@@ -469,6 +473,28 @@ export const reviewNotifications = sqliteTable("review_notifications", {
 }, t => ({
   recipientReviewUx:uniqueIndex("review_notifications_recipient_review_ux").on(t.recipientId,t.reviewId),
   inboxIx:index("review_notifications_inbox_ix").on(t.recipientId,t.readAt,t.createdAt),
+}));
+
+export const photoReviews = sqliteTable("photo_reviews", {
+  id: text("id").primaryKey(),
+  photoId: text("photo_id").notNull().references(() => photos.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  verdict: text("verdict", {enum:["ok","not_ok"]}).notNull(),
+  action: text("action", {enum:["re_check","re_take_photo","others"]}),
+  note: text("note"),
+  contentHash: text("content_hash").notNull(),
+  createdAt,
+}, t => ({ resultIx:index("photo_reviews_result_ix").on(t.photoId,t.createdAt) }));
+
+export const photoReviewNotifications = sqliteTable("photo_review_notifications", {
+  id: text("id").primaryKey(),
+  recipientId: text("recipient_id").notNull().references(() => users.id),
+  reviewId: text("review_id").notNull().references(() => photoReviews.id),
+  readAt: ts("read_at"),
+  createdAt,
+}, t => ({
+  recipientReviewUx:uniqueIndex("photo_review_notifications_recipient_review_ux").on(t.recipientId,t.reviewId),
+  inboxIx:index("photo_review_notifications_inbox_ix").on(t.recipientId,t.readAt,t.createdAt),
 }));
 
 export const dayComments = sqliteTable("day_comments", {

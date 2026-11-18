@@ -11,6 +11,7 @@ import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
 import { exportDailyPdfAction } from "@/app/pdf-actions";
 import { formatReportTimestamp } from "@/lib/datetime";
 import { PhotoGallery } from "@/components/reports/PhotoGallery";
+import {ReportGeneralPhotos} from "@/components/reports/ReportGeneralPhotos";
 import { ReportChecklist } from "@/components/reports/ReportChecklist";
 import { Pill, SEVERITY_TONE, STATUS_TONE } from "@/components/issues/IssueBadges";
 import { issueStatusLabel, severityLabel } from "@/lib/schemas";
@@ -124,7 +125,7 @@ function ReportSection({
 
         <ReportChecklist reportId={block.reportId} phase={title} results={block.results} canReview={canReview} canEdit={block.canEdit} timezone={tz} issueContext={{projectId,dayId,phase:block.phase}} />
 
-        <PhotoGrid photos={block.photos} />
+        <ReportGeneralPhotos photos={block.photos} reportId={block.reportId} canReview={canReview} canEdit={block.canEdit} timezone={tz}/>
       </div>
     </section>
   );

@@ -6,7 +6,7 @@ import { BrandMark, Icon } from "@/components/ui/WorkspaceUI";
 import Link from "next/link";
 import {NotificationLink} from "@/components/review/NotificationLink";
 import {getDb} from "@/server/db";
-import {unreadReviewCount} from "@/server/services/checklist-reviews";
+import {allUnreadReviewCount} from "@/server/services/all-review-notifications";
 
 /** Icon paths (Feather-style, stroke-based). */
 const ICONS = {
@@ -25,7 +25,7 @@ export async function AppShell({
   contentWidth?: "wide" | "form";
 }) {
   const session = await requireUser();
-  const unread=unreadReviewCount(getDb(),session.user);
+  const unread=allUnreadReviewCount(getDb(),session.user);
 
   // §4.1: a reset account must set a new password before using the app.
   if (session.mustChangePassword) redirect("/me/password");

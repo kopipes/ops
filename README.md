@@ -373,3 +373,8 @@ preserve earlier evidence. Changed points request a fresh review. The report
 author receives an in-app notification linking to the exact point (no self
 notification). Inbox access follows current project membership and read state is
 per recipient. Legacy general comments remain visible as history.
+
+General report photos can also be reviewed individually, including monitoring
+reports without checklist answers. A retake is linked to its original photo;
+the original and repair images stay together with review and version history.
+Notifications open the exact photo and provide a direct repair action.

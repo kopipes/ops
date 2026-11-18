@@ -69,6 +69,7 @@ export default async function EditReportPage({
         <EditReportForm
           action={editReportAction}
           reportId={report.id}
+          generalPhotos={report.generalPhotos}
           projectId={report.projectId}
           projectDayId={report.projectDayId}
           updatedAt={report.updatedAt}
@@ -89,7 +90,7 @@ export default async function EditReportPage({
         </p>
       )}
 
-      <PhotoGallery photos={report.photoIds.map((id,index)=>({id,label:`Foto laporan ${index+1}`}))} />
+      {!canEdit?<PhotoGallery photos={report.photoIds.map((id,index)=>({id,label:`Foto laporan ${index+1}`}))} />:null}
 
       {/* §9.5 no.4: "Lihat riwayat" */}
       {revisions.length > 0 ? (

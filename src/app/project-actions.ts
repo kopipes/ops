@@ -16,6 +16,7 @@ import {
 } from "@/lib/schemas";
 import {
   createProject,
+  initialProjectMembers,
   generateProjectCode,
   loadFacts,
   setProjectStatus,
@@ -218,7 +219,7 @@ export async function saveProjectAction(
 
     // Members from step 4.
     if (parsed.data.members.length > 0) {
-      await setMembers(db, user, projectId, parsed.data.members);
+      await setMembers(db, user, projectId, initialProjectMembers(user,parsed.data.members));
     }
 
     revalidateProject(projectId);

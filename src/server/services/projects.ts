@@ -195,6 +195,11 @@ export interface CreateProjectResult {
   days: DaySyncResult;
 }
 
+export function initialProjectMembers(user:ActingUser,members:ProjectInput["members"]) {
+  return isManager(user) && !members.some(m=>m.userId===user.id)
+    ? [...members,{userId:user.id,roleInProject:"lead" as const}] : members;
+}
+
 export async function createProject(
   db: DB,
   user: ActingUser,
@@ -244,8 +249,7 @@ export async function createProject(
   }
 
   // A manager who creates a project remains explicitly involved in it.
-  const members = isManager(user) && !input.members.some(m => m.userId === user.id)
-    ? [...input.members, { userId: user.id, roleInProject: "lead" as const }] : input.members;
+  const members = initialProjectMembers(user,input.members);
   for (const m of members) {
     await db
       .insert(projectMembers)

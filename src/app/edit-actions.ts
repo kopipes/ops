@@ -43,6 +43,7 @@ export async function editReportAction(
     if(!loaded)return {error:"Laporan tidak ditemukan"};
     if(selectedTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime))return {error:"Jam kejadian tidak valid"};
     await applyReportEdit(getDb(), getRawDb(), session.user, reportId, {
+      replacementPhotos:[...new Set([...formData.keys()].filter(key=>key.startsWith("replacement_")))].flatMap(key=>formData.getAll(key).filter((id):id is string=>typeof id==="string"&&id!=="").map(photoId=>({photoId,targetPhotoId:key.slice(12)}))),
       expectedUpdatedAt:formData.has("expectedUpdatedAt")?Number(formData.get("expectedUpdatedAt")):undefined,
       notes: notesRaw === "" ? null : notesRaw,
       observedAt:selectedTime?zonedToUtc(loaded.report.dayDate,selectedTime,loaded.report.timezone):undefined,
