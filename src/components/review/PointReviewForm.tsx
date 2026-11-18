@@ -1,15 +1,17 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pointReviewAction } from "@/app/review-actions";
 export function PointReviewForm({checkResultId,photoId,contentHash}:{checkResultId?:string;photoId?:string;contentHash:string}) {
   const router=useRouter();
+  const panel=useRef<HTMLDetailsElement>(null);
   const [verdict,setVerdict]=useState("not_ok"),[pending,setPending]=useState(false),[message,setMessage]=useState("");
   const [id,setId]=useState("");
-  return <details className="mt-3 border-t border-[var(--border)] pt-2"><summary className="min-h-tap cursor-pointer py-2 text-xs font-semibold text-[var(--accent)]">{photoId?"Review foto ini":"Review poin ini"}</summary>
-    <form className="mt-2 flex flex-col gap-3" action={async data=>{
+  return <details ref={panel} className="mt-3 border-t border-[var(--border)] pt-2"><summary className="min-h-tap cursor-pointer py-2 text-xs font-semibold text-[var(--accent)]">{photoId?"Review foto ini":"Review poin ini"}</summary>
+    <form className="mt-2 flex flex-col gap-3" onSubmit={async event=>{
+      event.preventDefault();const data=new FormData(event.currentTarget);
       setPending(true);setMessage("");const key=id||crypto.randomUUID();setId(key);data.set("id",key);
-      try { const result=await pointReviewAction({},data);setMessage(result.error??"Review tersimpan.");if(result.ok){setId("");router.refresh();} }
+      try { const result=await pointReviewAction({},data);setMessage(result.error??"Review tersimpan.");if(result.ok){setId("");if(panel.current)panel.current.open=false;router.refresh();} }
       catch {setMessage("Review belum tersimpan. Coba lagi.");}finally{setPending(false);}
     }}>
       {photoId?<input type="hidden" name="photoId" value={photoId}/>:<input type="hidden" name="checkResultId" value={checkResultId}/>}<input type="hidden" name="contentHash" value={contentHash}/>
