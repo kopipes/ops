@@ -18,6 +18,7 @@ import { createProject } from "./projects";
 import { syncProjectChecklist } from "./project-checklist";
 import { addMember } from "./members";
 import { detectImageType, MAX_UPLOAD_BYTES } from "./photos";
+import { getDailySummary, getDayDetail } from "./reports-review";
 import { zonedToUtc } from "@/lib/datetime";
 import { DEFAULT_SETTINGS, saveGlobalSettings } from "./app-settings";
 
@@ -140,7 +141,14 @@ async function setup() {
   await addMember(db, admin, projectId, "u-crew", "crew");
 }
 
-function baseInput(over: Partial<SubmitInput> = {}): SubmitInput {
+function baseInput(options: Partial<SubmitInput> & {uploaderId?:string} = {}): SubmitInput {
+  const {uploaderId="u-lead",...over}=options;
+  let photoId="p1";
+  if((over.phase??"opening")==="opening") {
+    const prior=sqlite.prepare("select owner_id,owner_type from photos where id=?").get(photoId) as {owner_id:string;owner_type:string}|undefined;
+    if(prior&&(prior.owner_id!==uploaderId||prior.owner_type!=="report"))photoId=`p1-${Math.random()}`;
+    sqlite.prepare("insert or ignore into photos (id,owner_type,owner_id,project_id,project_day_id,path,thumb_path,mime,width,height,size_bytes,source,uploaded_by,created_at) values (?,'report',?,?,?,'main.webp','thumb.webp','image/webp',100,100,100,'gallery',?,?)").run(photoId,uploaderId,projectId,dayId,uploaderId,now);
+  }
   const phase = over.phase ?? "opening";
 
   // Results must belong to the report's own phase — the service filters the
@@ -150,7 +158,7 @@ function baseInput(over: Partial<SubmitInput> = {}): SubmitInput {
     phase === "opening"
       ? [
           { projectChecklistItemId: itemIds[0].id, result: "ok" as const, note: null, photoIds: [] },
-          { projectChecklistItemId: itemIds[1].id, result: "ok" as const, note: null, photoIds: ["p1"] },
+          { projectChecklistItemId: itemIds[1].id, result: "ok" as const, note: null, photoIds: [photoId] },
         ]
       : [];
 
@@ -160,7 +168,7 @@ function baseInput(over: Partial<SubmitInput> = {}): SubmitInput {
     phase,
     clientSubmissionId: `cs-${Math.random()}`,
     notes: "Semua aman",
-    observedAt: now,
+    observedAt: zonedToUtc("2026-11-02","09:00","Asia/Jakarta"),
     results,
     photoIds: [],
     ...over,
@@ -305,21 +313,28 @@ describe("submitReport permissions (§4.6)", () => {
   });
 
   it("manager may submit opening", async () => {
-    const res = await submitReport(db, sqlite, mgr, baseInput());
+    const res = await submitReport(db, sqlite, mgr, baseInput({uploaderId:mgr.id}));
     expect(res.ok).toBe(true);
   });
 });
 
-describe("submitReport one-per-phase (§4.6)", () => {
-  it("rejects a second opening", async () => {
-    expect((await submitReport(db, sqlite, lead, baseInput())).ok).toBe(true);
-    const second = await submitReport(db, sqlite, lead, baseInput());
-    expect(second).toMatchObject({ ok: false, reason: "duplicate_phase" });
+describe("submitReport multiple reports per phase", () => {
+  it.each(["opening","monitoring","closing"] as const)("rejects a new %s after the day is reviewed", async phase => {
+    sqlite.prepare('update project_days set reviewed_at=? where id=?').run(Date.now(),dayId);
+    const result=await submitReport(db,sqlite,mgr,baseInput({phase,results:[],notes:"New report"}));
+    expect(result).toMatchObject({ok:false,reason:"forbidden"});
+    expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:0});
   });
 
-  it("enforces the constraint at the DATABASE level too", async () => {
+  it("allows a second opening", async () => {
+    expect((await submitReport(db, sqlite, lead, baseInput())).ok).toBe(true);
+    const second = await submitReport(db, sqlite, lead, baseInput());
+    expect(second.ok).toBe(true);
+  });
+
+  it("allows independent reports at the database level", async () => {
     await submitReport(db, sqlite, lead, baseInput());
-    // Bypass the service check entirely — the partial unique index must fire.
+    // Independent reports are allowed; the client submission ID remains unique.
     expect(() =>
       sqlite
         .prepare(
@@ -328,7 +343,7 @@ describe("submitReport one-per-phase (§4.6)", () => {
            values (?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .run("raw-1", projectId, dayId, "opening", "u-lead", "raw-cs", "submitted", now, now, 0, now, now),
-    ).toThrow(/UNIQUE/);
+    ).not.toThrow();
   });
 
   it("allows monitoring alongside opening", async () => {
@@ -456,14 +471,14 @@ describe("is_late (§13.2)", () => {
     try {
       await seedPhoto("p1", "u-lead");
       for (const phase of ["opening", "closing"] as const) {
-        const res = await submitReport(db, sqlite, lead, baseInput({ phase, clientSubmissionId: `no-window-${phase}`, observedAt: 0, ...(phase === "closing" ? { results: [] } : {}) }));
+        const res = await submitReport(db, sqlite, lead, baseInput({ phase, clientSubmissionId: `no-window-${phase}`, observedAt: zonedToUtc("2026-11-02","09:00","Asia/Jakarta"), ...(phase === "closing" ? { results: [] } : {}) }));
         expect(res.ok).toBe(true);
         if (!res.ok) throw new Error(res.message);
         expect(res.isLate).toBe(false);
         const stored = await db.select().from(schema.reports).where(eq(schema.reports.id, res.reportId)).get();
         expect(stored?.submittedAt).toBe(serverNow);
         expect(stored?.submittedBy).toBe(lead.id);
-        expect(stored?.observedAt).toBe(0);
+        expect(stored?.observedAt).toBe(zonedToUtc("2026-11-02","09:00","Asia/Jakarta"));
       }
     } finally { clock.mockRestore(); }
   });
@@ -504,7 +519,7 @@ describe("getReportForDayPhase", () => {
       submittedBy: "u-lead",
       clientSubmissionId: "draft-cs",
       status: "draft",
-      observedAt: now,
+      observedAt: zonedToUtc("2026-11-02","09:00","Asia/Jakarta"),
       createdAt: now,
       updatedAt: now,
     });
@@ -661,4 +676,49 @@ describe("phase narrative: Laporan Awal/Akhir Hari", () => {
       .get();
     expect(row?.phaseNote).toBeNull();
   });
+});
+
+describe("multiple reports retain independent context", () => {
+ it.each(["opening","closing"] as const)("keeps two %s reports and their photo galleries separate", async phase => {
+   await seedPhoto("photo-one",lead.id);await seedPhoto("photo-two",lead.id);
+   const one=await submitReport(db,sqlite,lead,baseInput({phase,photoIds:["photo-one"],observedAt:zonedToUtc("2026-11-02","09:00","Asia/Jakarta"),notes:"First"}));
+   const two=await submitReport(db,sqlite,lead,baseInput({phase,photoIds:["photo-two"],observedAt:zonedToUtc("2026-11-02","10:00","Asia/Jakarta"),notes:"Second"}));
+   expect(one.ok&&two.ok).toBe(true);const detail=await getDayDetail(db,mgr,projectId,"2026-11-02");
+   const blocks=phase==="opening"?detail!.openingReports:detail!.closingReports;
+   expect(blocks).toHaveLength(2);expect(blocks[0].photos.map(p=>p.id)).toContain("photo-one");expect(blocks[0].photos.map(p=>p.id)).not.toContain("photo-two");expect(blocks[1].photos.map(p=>p.id)).toContain("photo-two");expect(blocks[1].photos.map(p=>p.id)).not.toContain("photo-one");
+   expect(blocks.map(b=>b.notes)).toEqual(["First","Second"]);
+ });
+});
+
+it("rejects invalid, other-user, and reused photo IDs without creating a report", async () => {
+ const input=baseInput();input.results[1].photoIds=["missing-photo"];
+ expect(await submitReport(db,sqlite,lead,input)).toMatchObject({ok:false,reason:"validation"});
+ await seedPhoto("not-mine",crew.id);expect(await submitReport(db,sqlite,lead,baseInput({photoIds:["not-mine"]}))).toMatchObject({ok:false,reason:"validation"});
+ expect(await submitReport(db,sqlite,lead,baseInput({photoIds:["p1"]}))).toMatchObject({ok:false,reason:"validation"});
+ expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:0});
+});
+it("rejects same-user photos from another day", async () => {
+ await seedPhoto("wrong-day",lead.id);sqlite.prepare("insert into project_days (id,project_id,date,day_type,created_at,updated_at) values ('other-day',?,'2026-11-03','event',1,1)").run(projectId);sqlite.prepare("update photos set project_day_id='other-day' where id='wrong-day'").run();
+ expect(await submitReport(db,sqlite,lead,baseInput({photoIds:["wrong-day"]}))).toMatchObject({ok:false,reason:"validation"});
+ expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:0});
+});
+it("rolls back if a photo claim updates no rows", async () => {
+ const input=baseInput();sqlite.exec("create trigger skip_photo before update on photos begin select raise(ignore); end");
+ await expect(submitReport(db,sqlite,lead,input)).rejects.toThrow(/Foto/);expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:0});expect(sqlite.prepare('select count(*) as n from report_check_results').get()).toEqual({n:0});
+});
+it("excludes provisional photos from submitted-report galleries and counts", async () => {
+ await seedPhoto("abandoned",lead.id);await submitReport(db,sqlite,lead,baseInput());const detail=await getDayDetail(db,mgr,projectId,"2026-11-02");expect(detail!.gallery.map(p=>p.id)).not.toContain("abandoned");expect(detail!.summary.photoCount).toBe(1);
+});
+it("rejects an event timestamp on another local date", async () => {
+ expect(await submitReport(db,sqlite,lead,baseInput({observedAt:zonedToUtc("2026-11-03","09:00","Asia/Jakarta")}))).toMatchObject({ok:false,reason:"validation"});
+});
+it("a backfilled earlier event does not override the latest checklist state", async () => {
+ await submitReport(db,sqlite,lead,baseInput({observedAt:zonedToUtc("2026-11-02","10:00","Asia/Jakarta")}));
+ const earlier=baseInput({observedAt:zonedToUtc("2026-11-02","08:00","Asia/Jakarta")});earlier.results[0]={...earlier.results[0],result:"not_ok",note:"Earlier problem"};await submitReport(db,sqlite,lead,earlier);
+ const detail=await getDayDetail(db,mgr,projectId,"2026-11-02");expect(detail!.summary.notOkCount).toBe(0);expect(detail!.openingReports[0].observedAt).toBe(earlier.observedAt);
+});
+
+it("daily list excludes abandoned photos and shows event time separately", async () => {
+ await seedPhoto("abandoned-list",lead.id);const eventAt=zonedToUtc("2026-11-02","09:15","Asia/Jakarta");await submitReport(db,sqlite,lead,baseInput({observedAt:eventAt}));
+ const list=await getDailySummary(db,[projectId],{from:"2026-11-02",to:"2026-11-02",projectId});expect(list[0].photoCount).toBe(1);expect(list[0].opening?.at).toBe(eventAt);expect(list[0].opening?.submittedAt).toBeGreaterThan(eventAt);
 });

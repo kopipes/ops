@@ -357,3 +357,11 @@ describe("closed projects still allow report edits before review", () => {
     expect(loaded?.canEdit).toBe(true);
   });
 });
+
+it("edits event time and phase narrative with immutable revision history", async () => {
+ const loaded=await getEditableReport(db,mgr,reportId);expect(loaded).not.toBeNull();
+ const previous=loaded!.report;
+ await applyReportEdit(db,sqlite,mgr,reportId,{notes:previous.notes,observedAt:previous.observedAt+3600000,phaseNote:"Updated narrative",results:previous.results.map(r=>({projectChecklistItemId:r.projectChecklistItemId,result:r.result,note:r.note,photoIds:[]}))});
+ const updated=await getEditableReport(db,mgr,reportId);expect(updated!.report.observedAt).toBe(previous.observedAt+3600000);expect(updated!.report.phaseNote).toBe("Updated narrative");
+ const revisions=await listReportRevisions(db,reportId);expect(revisions[0].snapshot.observedAt).toBe(previous.observedAt);expect(revisions[0].changes.map(c=>c.field)).toEqual(expect.arrayContaining(["observedAt","phaseNote"]));expect(updated!.report.submittedAt).toBe(previous.submittedAt);
+});

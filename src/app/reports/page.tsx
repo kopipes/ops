@@ -252,17 +252,17 @@ export default async function ReportsPage({
                     <div className="flex justify-between gap-1">
                       <dt style={{ color: "var(--muted)" }}>Opening</dt>
                       <dd>
-                        <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />
+                        <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />{r.openingCount>1 ? <span className="ml-1 text-[var(--muted)]">({r.openingCount} laporan)</span>:null}
                         {r.opening?.at ? ` ${timeInZone(r.opening.at, project?.timezone ?? "Asia/Jakarta")}` : ""}
-                        {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}</span> : null}
+                        {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}{r.opening.submittedAt ? ` · dikirim ${timeInZone(r.opening.submittedAt,project?.timezone??"Asia/Jakarta")}`:""}</span> : null}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-1">
                       <dt style={{ color: "var(--muted)" }}>Closing</dt>
                       <dd>
-                        <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />
+                        <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />{r.closingCount>1 ? <span className="ml-1 text-[var(--muted)]">({r.closingCount} laporan)</span>:null}
                         {r.closing?.at ? ` ${timeInZone(r.closing.at, project?.timezone ?? "Asia/Jakarta")}` : ""}
-                        {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}</span> : null}
+                        {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}{r.closing.submittedAt ? ` · dikirim ${timeInZone(r.closing.submittedAt,project?.timezone??"Asia/Jakarta")}`:""}</span> : null}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-1">
@@ -347,24 +347,24 @@ export default async function ReportsPage({
                       {r.divisionName}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right text-xs">
-                      <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />
+                      <PhaseCell value={r.opening} windowEnabled={settings.openingWindowEnabled} />{r.openingCount>1 ? <span className="ml-1 text-[var(--muted)]">({r.openingCount} laporan)</span>:null}
                       {r.opening?.at ? (
                         <span style={{ color: "var(--muted)" }}>
                           {" "}
                           {timeInZone(r.opening.at, project?.timezone ?? "Asia/Jakarta")}
                         </span>
                       ) : null}
-                      {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}</span> : null}
+                      {r.opening?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.opening.by}{r.opening.submittedAt ? ` · dikirim ${timeInZone(r.opening.submittedAt,project?.timezone??"Asia/Jakarta")}`:""}</span> : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right text-xs">
-                      <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />
+                      <PhaseCell value={r.closing} windowEnabled={settings.closingWindowEnabled} />{r.closingCount>1 ? <span className="ml-1 text-[var(--muted)]">({r.closingCount} laporan)</span>:null}
                       {r.closing?.at ? (
                         <span style={{ color: "var(--muted)" }}>
                           {" "}
                           {timeInZone(r.closing.at, project?.timezone ?? "Asia/Jakarta")}
                         </span>
                       ) : null}
-                      {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}</span> : null}
+                      {r.closing?.by ? <span className="block" style={{ color: "var(--muted)" }}>Diisi oleh {r.closing.by}{r.closing.submittedAt ? ` · dikirim ${timeInZone(r.closing.submittedAt,project?.timezone??"Asia/Jakarta")}`:""}</span> : null}
                     </td>
                     <td className="px-3 py-1.5 text-right">{r.monitoringCount}</td>
                     <td className="px-3 py-1.5 text-right">

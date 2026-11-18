@@ -1,5 +1,7 @@
 "use client";
 
+import { PhotoGallery } from "@/components/reports/PhotoGallery";
+
 import { useActionState, useState } from "react";
 import { compressPhoto } from "@/lib/image-compression";
 import { SEVERITIES, severityLabel } from "@/lib/schemas";
@@ -293,19 +295,7 @@ export function IssueForm({
           className="block w-full text-xs"
         />
 
-        {existingPhotos.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {existingPhotos.map((p) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={p.id}
-                src={`/api/photos/${p.id}?v=thumb`}
-                alt="Foto terlampir"
-                className="h-14 w-14 rounded object-cover"
-              />
-            ))}
-          </div>
-        ) : null}
+        <PhotoGallery small photos={[...existingPhotos.map(p => p.id), ...photoIds].filter((id, index, all) => all.indexOf(id) === index).map((id, index) => ({ id, label: `Foto issue ${index + 1}` }))} />
 
         <p className="text-xs" style={{ color: "var(--muted)" }}>
           {uploading > 0 ? `Mengupload ${uploading} foto…` : ""}

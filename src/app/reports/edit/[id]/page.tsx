@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { PhotoGallery } from "@/components/reports/PhotoGallery";
 import { EditReportForm } from "@/components/crew/EditReportForm";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
@@ -69,6 +70,11 @@ export default async function EditReportPage({
           action={editReportAction}
           reportId={report.id}
           notes={report.notes}
+          phase={report.phase}
+          timezone={report.timezone}
+          phaseNote={report.phaseNote}
+          handoverNote={report.handoverNote}
+          observedTime={new Intl.DateTimeFormat("en-GB",{timeZone:report.timezone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(report.observedAt))}
           results={report.results}
         />
       ) : (
@@ -79,6 +85,8 @@ export default async function EditReportPage({
           {editBlockedReason ?? "Laporan ini tidak bisa diedit."}
         </p>
       )}
+
+      <PhotoGallery photos={report.photoIds.map((id,index)=>({id,label:`Foto laporan ${index+1}`}))} />
 
       {/* §9.5 no.4: "Lihat riwayat" */}
       {revisions.length > 0 ? (
@@ -102,13 +110,13 @@ export default async function EditReportPage({
                   <ul className="mt-1 flex flex-col gap-0.5 text-xs">
                     {rev.changes.map((c, k) => (
                       <li key={`${c.projectChecklistItemId}-${c.field}-${k}`} style={{ color: "var(--muted)" }}>
-                        {c.label} · {c.field === "result" ? "hasil" : "catatan"}:{" "}
+                        {c.label} · {c.field === "result" ? "hasil" : c.field === "observedAt" ? "waktu" : "catatan"}:{" "}
                         <span style={{ color: "#991b1b" }}>
-                          {c.field === "result" ? (RESULT_LABEL[c.from ?? ""] ?? c.from ?? "—") : (c.from ?? "—")}
+                          {c.field === "result" ? (RESULT_LABEL[c.from ?? ""] ?? c.from ?? "—") : c.field === "observedAt" ? formatReportTimestamp(Number(c.from),report.timezone) : (c.from ?? "—")}
                         </span>{" "}
                         →{" "}
                         <span style={{ color: "#166534" }}>
-                          {c.field === "result" ? (RESULT_LABEL[c.to ?? ""] ?? c.to ?? "—") : (c.to ?? "—")}
+                          {c.field === "result" ? (RESULT_LABEL[c.to ?? ""] ?? c.to ?? "—") : c.field === "observedAt" ? formatReportTimestamp(Number(c.to),report.timezone) : (c.to ?? "—")}
                         </span>
                       </li>
                     ))}
@@ -121,6 +129,9 @@ export default async function EditReportPage({
                   </summary>
                   <div className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
                     <p>Catatan umum: {rev.snapshot.notes ?? "—"}</p>
+                    {rev.snapshot.observedAt ? <p>Waktu kejadian: {formatReportTimestamp(rev.snapshot.observedAt,report.timezone)}</p>:null}
+                    {rev.snapshot.phaseNote ? <p>Isi laporan: {rev.snapshot.phaseNote}</p>:null}
+                    {rev.snapshot.handoverNote ? <p>Handover: {rev.snapshot.handoverNote}</p>:null}
                     <ul className="mt-1 flex flex-col gap-0.5">
                       {rev.snapshot.results.map((r, k) => (
                         <li key={`${r.label}-${k}`}>

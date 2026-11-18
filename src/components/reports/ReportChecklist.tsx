@@ -7,7 +7,7 @@ const styles = {
 };
 
 /** All recorded answers are visible initially, including OK notes and categories. */
-export function ReportChecklist({ reportId, phase, results }: { reportId: string; phase: string; results: ReportBlock["results"] }) {
+export function ReportChecklist({ reportId, phase, results, issueContext }: { reportId: string; phase: string; results: ReportBlock["results"]; issueContext?: {projectId:string;dayId:string;phase:string} }) {
   const ordered = [...results].sort((a, b) => ({ not_ok: 0, na: 1, ok: 2 }[a.result] - { not_ok: 0, na: 1, ok: 2 }[b.result]));
   return (
     <details id={`checklist-${reportId}`} open className="mt-3 scroll-mt-5 rounded-lg border" style={{ borderColor: "var(--border)" }}>
@@ -28,6 +28,7 @@ export function ReportChecklist({ reportId, phase, results }: { reportId: string
               </div>
               <span className="shrink-0 rounded-full px-2 py-1 text-[11px] font-medium" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
             </div>
+            {result.result === "not_ok" && issueContext ? <a href={`/issues/new?${new URLSearchParams({...issueContext,reportId,checkResultId:result.id,title:result.label,description:result.note??""}).toString()}`} className="mt-2 inline-flex min-h-tap items-center rounded-lg border border-red-700/20 px-3 text-xs text-red-800">Jadikan Issue</a> : null}
             {result.note ? <p className="mt-1 whitespace-pre-wrap text-xs" style={{ color: "var(--muted)" }}>{result.note}</p> : null}
           </li>;
         })}

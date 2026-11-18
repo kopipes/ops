@@ -154,9 +154,11 @@ export interface DailySummaryRow {
   divisionName: string;
   date: string;
   projectDayId: string | null;
-  opening: { at: number | null; isLate: boolean; by: string | null } | null;
-  closing: { at: number | null; isLate: boolean; by: string | null } | null;
+  opening: { at: number | null; submittedAt: number | null; isLate: boolean; by: string | null } | null;
+  closing: { at: number | null; submittedAt: number | null; isLate: boolean; by: string | null } | null;
   monitoringCount: number;
+  openingCount: number;
+  closingCount: number;
   /** Percentage of answered checklist items that are OK (null = nothing answered). */
   checklistOkPct: number | null;
   answeredCount: number;
@@ -246,6 +248,7 @@ export async function getDailySummary(
       projectDayId: reports.projectDayId,
       phase: reports.phase,
       submittedAt: reports.submittedAt,
+      observedAt: reports.observedAt,
       isLate: reports.isLate,
       submittedBy: reports.submittedBy,
     })
@@ -260,7 +263,9 @@ export async function getDailySummary(
 
   const resultRows = await db
     .select({
+      id: reportCheckResults.id,
       reportId: reportCheckResults.reportId,
+      itemId: reportCheckResults.projectChecklistItemId,
       result: reportCheckResults.result,
     })
     .from(reportCheckResults)
@@ -279,7 +284,7 @@ export async function getDailySummary(
   const photoRows = await db
     .select({ projectDayId: photos.projectDayId })
     .from(photos)
-    .where(and(inArray(photos.projectDayId, dayIds), isNull(photos.deletedAt)));
+    .where(and(inArray(photos.projectDayId,dayIds),isNull(photos.deletedAt),sql`((${photos.ownerType}='report' and ${inArray(photos.ownerId,reportRows.map(r=>r.id).concat("__none__"))}) or (${photos.ownerType}='check_result' and ${inArray(photos.ownerId,resultRows.map(r=>r.id).concat("__none__"))}))`));
 
   // Reviewer names.
   const reviewerIds = [...new Set(dayRows.map((d) => d.reviewedBy).filter(Boolean))] as string[];
@@ -306,14 +311,16 @@ export async function getDailySummary(
     const project = projectById.get(day.projectId);
     if (!project) continue;
 
-    const dayReports = reportRows.filter((r) => r.projectDayId === day.id);
+    const dayReports = reportRows.filter((r) => r.projectDayId === day.id).sort((a,b)=>a.observedAt-b.observedAt||(a.submittedAt??0)-(b.submittedAt??0)||a.id.localeCompare(b.id));
     const openingReport = dayReports.find((r) => r.phase === "opening");
-    const closingReport = dayReports.find((r) => r.phase === "closing");
+    const closingReport = [...dayReports].reverse().find((r) => r.phase === "closing");
     const monitoringCount = dayReports.filter((r) => r.phase === "monitoring").length;
 
     // Checklist % is computed over the results actually recorded that day.
     const dayReportIds = new Set(dayReports.map((r) => r.id));
-    const dayResults = resultRows.filter((r) => dayReportIds.has(r.reportId));
+    const latest=new Map<string,typeof resultRows[number]>();
+    for(const report of dayReports)for(const result of resultRows.filter(r=>r.reportId===report.id))latest.set(result.itemId,result);
+    const dayResults=[...latest.values()];
     const answeredCount = dayResults.length;
     const okCount = dayResults.filter((r) => r.result === "ok").length;
     const notOkCount = dayResults.filter((r) => r.result === "not_ok").length;
@@ -334,19 +341,23 @@ export async function getDailySummary(
       projectDayId: day.id,
       opening: openingReport
         ? {
-            at: openingReport.submittedAt,
+            at: openingReport.observedAt,
+            submittedAt:openingReport.submittedAt,
             isLate: Boolean(openingReport.isLate),
             by: submitterName.get(openingReport.submittedBy) ?? null,
           }
         : null,
       closing: closingReport
         ? {
-            at: closingReport.submittedAt,
+            at: closingReport.observedAt,
+            submittedAt:closingReport.submittedAt,
             isLate: Boolean(closingReport.isLate),
             by: submitterName.get(closingReport.submittedBy) ?? null,
           }
         : null,
       monitoringCount,
+      openingCount:dayReports.filter(r=>r.phase==="opening").length,
+      closingCount:dayReports.filter(r=>r.phase==="closing").length,
       checklistOkPct: answeredCount === 0 ? null : Math.round((okCount / answeredCount) * 100),
       answeredCount,
       notOkCount,
@@ -403,6 +414,8 @@ export interface DayDetail {
   handoverFromPrevious: string | null;
   opening: ReportBlock | null;
   closing: ReportBlock | null;
+  openingReports: ReportBlock[];
+  closingReports: ReportBlock[];
   monitoring: ReportBlock[];
   issues: IssueCard[];
   gallery: GalleryPhoto[];
@@ -413,6 +426,8 @@ export interface DayDetail {
 
 export interface ReportBlock {
   reportId: string;
+  handoverNote: string | null;
+  observedAt: number;
   phase: Phase;
   submittedByName: string | null;
   submittedAt: number | null;
@@ -455,6 +470,7 @@ export interface IssueCard {
 
 export interface GalleryPhoto {
   id: string;
+  reportId: string | null;
   phase: Phase | null;
   uploadedByName: string | null;
   takenAt: number | null;
@@ -493,7 +509,7 @@ export async function getDayDetail(
         eq(reports.status, "submitted"),
       ),
     )
-    .orderBy(asc(reports.submittedAt));
+    .orderBy(asc(reports.observedAt), asc(reports.submittedAt), asc(reports.id));
 
   const reportIds = dayReports.map((r) => r.id);
   const results =
@@ -503,6 +519,7 @@ export async function getDayDetail(
           .select({
             id: reportCheckResults.id,
             reportId: reportCheckResults.reportId,
+            itemId: reportCheckResults.projectChecklistItemId,
             result: reportCheckResults.result,
             note: reportCheckResults.note,
             label: projectChecklistItems.label,
@@ -555,19 +572,21 @@ export async function getDayDetail(
 
   const gallery: GalleryPhoto[] = dayPhotos.map((p) => {
     let phase: Phase | null = null;
-    if (p.ownerType === "report") phase = resultPhase.get(p.ownerId) ?? null;
+    let reportId: string | null = null;
+    if (p.ownerType === "report") {reportId=resultPhase.has(p.ownerId)?p.ownerId:null;phase=resultPhase.get(p.ownerId)??null;}
     else if (p.ownerType === "check_result") {
-      const reportId = resultToReport.get(p.ownerId);
+      reportId = resultToReport.get(p.ownerId) ?? null;
       phase = reportId ? (resultPhase.get(reportId) ?? null) : null;
     }
     return {
       id: p.id,
+      reportId,
       phase,
       uploadedByName: p.uploadedBy ? (uploaderName.get(p.uploadedBy) ?? null) : null,
       takenAt: p.takenAt,
       createdAt: p.createdAt,
     };
-  });
+  }).filter(photo=>photo.reportId!==null);
 
   /**
    * §9.5 no.4: one lookup for every report on this day, so each block can render
@@ -601,9 +620,8 @@ export async function getDayDetail(
     }
   }
 
-  const buildBlock = (phase: Phase): ReportBlock | null => {
-    const report = dayReports.find((r) => r.phase === phase);
-    if (!report) return null;
+  const buildBlock = (report: typeof dayReports[number]): ReportBlock => {
+    const phase = report.phase;
     const blockResults = results
       .filter((r) => r.reportId === report.id)
       .sort(
@@ -614,12 +632,14 @@ export async function getDayDetail(
 
     return {
       reportId: report.id,
+      observedAt: report.observedAt,
       phase,
       submittedByName: submitterName.get(report.submittedBy) ?? null,
       submittedAt: report.submittedAt,
       isLate: Boolean(report.isLate) && isWindowEnabled(phase, timingSettings),
       notes: report.notes,
       phaseNote: report.phaseNote,
+      handoverNote: report.handoverNote,
       latitude: report.latitude,
       longitude: report.longitude,
       locationAccuracyM: report.locationAccuracyM,
@@ -631,7 +651,7 @@ export async function getDayDetail(
         result: r.result as "ok" | "not_ok" | "na",
         note: r.note,
       })),
-      photos: gallery.filter((p) => p.phase === phase),
+      photos: gallery.filter((p) => p.reportId === report.id),
     };
   };
 
@@ -723,9 +743,14 @@ export async function getDayDetail(
     .where(eq(dayComments.projectDayId, day.id))
     .orderBy(asc(dayComments.createdAt));
 
-  const answeredCount = results.length;
-  const okCount = results.filter((r) => r.result === "ok").length;
-  const notOkCount = results.filter((r) => r.result === "not_ok").length;
+  const latest = new Map<string, typeof results[number]>();
+  for(const report of [...dayReports].sort((a,b)=>a.observedAt-b.observedAt||(a.submittedAt??0)-(b.submittedAt??0)||a.id.localeCompare(b.id))) for(const result of results.filter(r=>r.reportId===report.id))latest.set(result.itemId,result);
+  const currentResults=[...latest.values()];
+  const answeredCount=currentResults.length;
+  const okCount=currentResults.filter(r=>r.result==="ok").length;
+  const notOkCount=currentResults.filter(r=>r.result==="not_ok").length;
+  const openingReports=dayReports.filter(r=>r.phase==="opening").map(buildBlock);
+  const closingReports=dayReports.filter(r=>r.phase==="closing").map(buildBlock);
 
   return {
     project: {
@@ -756,36 +781,11 @@ export async function getDayDetail(
       monitoringCount: dayReports.filter((r) => r.phase === "monitoring").length,
     },
     handoverFromPrevious: previousDays[0]?.handoverNote ?? null,
-    opening: buildBlock("opening"),
-    closing: buildBlock("closing"),
-    monitoring: dayReports
-      .filter((r) => r.phase === "monitoring")
-      .map((r) => {
-        const blockResults = results
-          .filter((x) => x.reportId === r.id)
-          .sort((a, b) => a.sortOrder - b.sortOrder);
-        return {
-          reportId: r.id,
-          phase: "monitoring" as Phase,
-          submittedByName: submitterName.get(r.submittedBy) ?? null,
-          submittedAt: r.submittedAt,
-          isLate: Boolean(r.isLate),
-          notes: r.notes,
-          phaseNote: r.phaseNote,
-          latitude: r.latitude,
-          longitude: r.longitude,
-          locationAccuracyM: r.locationAccuracyM,
-          editLabel: editLabels.get(r.id) ?? null,
-          results: blockResults.map((x) => ({
-            id: x.id,
-            label: x.label,
-            categoryName: x.categoryName,
-            result: x.result as "ok" | "not_ok" | "na",
-            note: x.note,
-          })),
-          photos: gallery.filter((p) => p.phase === "monitoring"),
-        };
-      }),
+    opening: [...openingReports].sort((a,b)=>a.observedAt-b.observedAt||(a.submittedAt??0)-(b.submittedAt??0)||a.reportId.localeCompare(b.reportId))[0] ?? null,
+    closing: [...closingReports].sort((a,b)=>b.observedAt-a.observedAt||(b.submittedAt??0)-(a.submittedAt??0)||b.reportId.localeCompare(a.reportId))[0] ?? null,
+    openingReports,
+    closingReports,
+    monitoring: dayReports.filter(r=>r.phase==="monitoring").map(buildBlock),
     issues: issueCards,
     gallery,
     comments: comments.map((c) => ({

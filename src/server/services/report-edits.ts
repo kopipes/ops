@@ -23,8 +23,8 @@ import {
   users,
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
-import { canEditReport, type ActingUser } from "@/server/permissions";
-import { editDeadline } from "@/lib/datetime";
+import { canEditReport, canViewProject, type ActingUser } from "@/server/permissions";
+import { toLocalDate, editDeadline } from "@/lib/datetime";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
 import { validateResults, type CheckResultInput } from "./reports";
@@ -33,6 +33,12 @@ type DB = BetterSQLite3Database<typeof schema>;
 
 export interface EditableReport {
   timezone: string;
+  observedAt: number;
+  phaseNote: string | null;
+  handoverNote: string | null;
+  projectDayId: string;
+  dayDate: string;
+  photoIds: string[];
   id: string;
   phase: "opening" | "monitoring" | "closing";
   submittedAt: number | null;
@@ -70,9 +76,11 @@ export async function getEditableReport(
   if (!day || !project || project.deletedAt !== null) return null;
 
   const facts = await loadFacts(db, row.projectId);
+  if(!canViewProject(user,facts))return null;
 
   const results = await db
     .select({
+      checkResultId: reportCheckResults.id,
       projectChecklistItemId: reportCheckResults.projectChecklistItemId,
       result: reportCheckResults.result,
       note: reportCheckResults.note,
@@ -102,6 +110,8 @@ export async function getEditableReport(
     .where(eq(users.id, row.submittedBy))
     .get();
 
+  const photoOwners=[row.id,...results.map(r=>r.checkResultId)];
+  const attachedPhotos=await db.select({id:photos.id}).from(photos).where(and(inArray(photos.ownerId,photoOwners),eq(photos.projectId,row.projectId)));
   const lastRevision = revisions[revisions.length - 1];
   const lastEditor = lastRevision?.editedBy
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, lastRevision.editedBy)).get()
@@ -131,6 +141,13 @@ export async function getEditableReport(
   return {
     report: {
       timezone: project.timezone,
+      observedAt: row.observedAt,
+      phaseNote: row.phaseNote,
+      handoverNote: row.handoverNote,
+      projectDayId: day.id,
+      dayDate: day.date,
+      photoIds: attachedPhotos.map(p=>p.id),
+
       id: row.id,
       phase: row.phase,
       submittedAt: row.submittedAt,
@@ -167,7 +184,7 @@ export async function applyReportEdit(
   raw: Database.Database,
   user: ActingUser,
   reportId: string,
-  input: { notes: string | null; results: CheckResultInput[] },
+  input: { notes: string | null; results: CheckResultInput[]; observedAt?: number; phaseNote?: string | null; handoverNote?: string | null },
 ): Promise<void> {
   const loaded = await getEditableReport(db, user, reportId);
   if (!loaded) throw new ValidationError("Laporan tidak ditemukan");
@@ -218,6 +235,9 @@ export async function applyReportEdit(
 
   const now = Date.now();
   const snapshot = {
+    observedAt: loaded.report.observedAt,
+    phaseNote: loaded.report.phaseNote,
+    handoverNote: loaded.report.handoverNote,
     notes: loaded.report.notes,
     results: loaded.report.results.map((r) => ({
       projectChecklistItemId: r.projectChecklistItemId,
@@ -227,7 +247,14 @@ export async function applyReportEdit(
     })),
   };
 
+  const observedAt=input.observedAt ?? loaded.report.observedAt;
+  const phaseNote=input.phaseNote === undefined ? loaded.report.phaseNote : input.phaseNote;
+  const handoverNote=input.handoverNote === undefined ? loaded.report.handoverNote : input.handoverNote;
+  if(!Number.isFinite(observedAt)||observedAt<=0||toLocalDate(observedAt,loaded.report.timezone)!==loaded.report.dayDate)throw new ValidationError("Waktu kejadian tidak valid");
   const changes = computeChanges(snapshot.results, input.results);
+  if(observedAt!==snapshot.observedAt)changes.push({projectChecklistItemId:"report",label:"Jam kejadian",field:"observedAt",from:String(snapshot.observedAt),to:String(observedAt)});
+  if(handoverNote!==snapshot.handoverNote)changes.push({projectChecklistItemId:"report",label:"Handover",field:"handoverNote",from:snapshot.handoverNote,to:handoverNote});
+  if(phaseNote!==snapshot.phaseNote)changes.push({projectChecklistItemId:"report",label:"Isi laporan",field:"phaseNote",from:snapshot.phaseNote,to:phaseNote});
   if (snapshot.notes === input.notes && changes.length === 0) {
     throw new ValidationError("Tidak ada perubahan");
   }
@@ -235,6 +262,8 @@ export async function applyReportEdit(
   const revisionId = randomUUID();
 
   const tx = raw.transaction(() => {
+    const day=raw.prepare('select reviewed_at from project_days where id=?').get(loaded.report.projectDayId) as {reviewed_at:number|null}|undefined;
+    if(!day||day.reviewed_at!==null)throw new ForbiddenError("Hari sudah direview. Batalkan review sebelum mengedit.");
     raw
       .prepare(
         `insert into report_revisions (id, report_id, edited_by, snapshot_json, changes_json, created_at)
@@ -249,7 +278,11 @@ export async function applyReportEdit(
         now,
       );
 
-    raw.prepare(`update reports set notes = ?, updated_at = ? where id = ?`).run(input.notes, now, reportId);
+    raw.prepare(`update reports set notes = ?, phase_note = ?, handover_note = ?, observed_at = ?, updated_at = ? where id = ?`).run(input.notes, phaseNote, handoverNote, observedAt, now, reportId);
+    if(loaded.report.phase === "closing" && (handoverNote!==snapshot.handoverNote || observedAt!==snapshot.observedAt)) {
+      const latest=raw.prepare("select handover_note from reports where project_day_id=? and phase='closing' and status='submitted' and deleted_at is null order by observed_at desc,submitted_at desc,id desc limit 1").get(loaded.report.projectDayId) as {handover_note:string|null}|undefined;
+      raw.prepare("update project_days set handover_note=?,updated_at=? where id=?").run(latest?.handover_note??null,now,loaded.report.projectDayId);
+    }
 
     const updateResult = raw.prepare(
       `update report_check_results set result = ?, note = ? where report_id = ? and project_checklist_item_id = ?`,
@@ -281,7 +314,7 @@ export async function applyReportEdit(
 export interface FieldChange {
   projectChecklistItemId: string;
   label: string;
-  field: "result" | "note";
+  field: "result" | "note" | "observedAt" | "phaseNote" | "handoverNote";
   from: string | null;
   to: string | null;
 }
@@ -327,6 +360,9 @@ export interface RevisionView {
   changes: FieldChange[];
   snapshot: {
     notes: string | null;
+    observedAt?: number;
+    phaseNote?: string | null;
+    handoverNote?: string | null;
     results: { label: string; result: string; note: string | null }[];
   };
 }
@@ -359,6 +395,9 @@ export async function listReportRevisions(db: DB, reportId: string): Promise<Rev
   return rows.map((r) => {
     const snap = JSON.parse(r.snapshotJson) as {
       notes: string | null;
+      observedAt?: number;
+      phaseNote?: string | null;
+    handoverNote?: string | null;
       results: { label: string; result: string; note: string | null }[];
     };
     return {
@@ -366,7 +405,7 @@ export async function listReportRevisions(db: DB, reportId: string): Promise<Rev
       editedByName: r.editedBy ? (editorName.get(r.editedBy) ?? null) : null,
       createdAt: r.createdAt,
       changes: r.changesJson ? (JSON.parse(r.changesJson) as FieldChange[]) : [],
-      snapshot: { notes: snap.notes, results: snap.results },
+      snapshot: { notes: snap.notes, results: snap.results, observedAt: snap.observedAt, phaseNote: snap.phaseNote, handoverNote:snap.handoverNote },
     };
   });
 }

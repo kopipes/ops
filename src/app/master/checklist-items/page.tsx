@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { MasterNav } from "@/components/master/MasterNav";
+import { ChecklistImport } from "@/components/master/ChecklistImport";
 import { ChecklistItemList } from "@/components/master/ChecklistItemList";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
@@ -28,7 +29,7 @@ export default async function ChecklistItemsPage() {
     listChecklistItems(db, session.user, { includeInactive: true }),
     listChecklistCategories(db),
     db
-      .select({ id: divisions.id, name: divisions.name })
+      .select({ id: divisions.id, name: divisions.name, isActive:divisions.isActive })
       .from(divisions)
       .orderBy(asc(divisions.name)),
   ]);
@@ -36,6 +37,7 @@ export default async function ChecklistItemsPage() {
   return (
     <AppShell>
       <MasterNav active="items" isAdmin={isAdmin(session.user)} />
+      <div className="mb-5"><ChecklistImport divisions={divisionRows.filter(d => d.isActive && (isAdmin(session.user) || session.user.divisionIds.includes(d.id)))} isAdmin={isAdmin(session.user)} managerDivisionId={session.user.divisionIds[0] ?? null} /></div>
       <ChecklistItemList
         items={items.map((i) => ({
           id: i.id,

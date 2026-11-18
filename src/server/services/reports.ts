@@ -7,7 +7,7 @@
  * its multi-statement writes through `raw.transaction(...)` with no `await`
  * inside the transactional body. All validation happens before the transaction.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -22,7 +22,7 @@ import {
   users,
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
-import { computeIsLate, zonedToUtc } from "@/lib/datetime";
+import { computeIsLate, toLocalDate, zonedToUtc } from "@/lib/datetime";
 import {
   canSubmitPhase,
   isReportEditable,
@@ -71,7 +71,7 @@ export interface SubmitInput {
 
 export type SubmitOutcome =
   | { ok: true; reportId: string; isLate: boolean; idempotent: boolean }
-  | { ok: false; reason: "forbidden" | "duplicate_phase" | "validation"; message: string };
+  | { ok: false; reason: "forbidden" | "validation"; message: string };
 
 /**
  * Validates the checklist answers before anything is written.
@@ -157,30 +157,14 @@ export async function loadSubmitContext(db: DB, input: SubmitInput) {
     )
     .orderBy(asc(projectChecklistItems.sortOrder));
 
-  const existing = await db
-    .select({ id: reports.id, status: reports.status, submittedBy: reports.submittedBy })
-    .from(reports)
-    .where(
-      and(
-        eq(reports.projectDayId, input.projectDayId),
-        eq(reports.phase, input.phase),
-        isNull(reports.deletedAt),
-        eq(reports.status, "submitted"),
-      ),
-    )
-    .get();
-
-  return { project, day, facts, checklist, existingSubmitted: existing ?? null };
+  return { project, day, facts, checklist };
 }
 
 /**
  * Submits a report atomically.
  *
- * Duplicate protection has three layers (§4.6, §9.2):
- *   1. `client_submission_id` unique index -> double-tap / retry is idempotent.
- *   2. the partial unique index on (project_day_id, phase) -> only one live
- *      opening/closing per day, enforced by the database.
- *   3. this function checks first so the caller gets a friendly message.
+ * A unique client_submission_id protects double-tap/retries. Independent reports
+ * are allowed in every phase; a reviewed day rejects new submissions.
  */
 export async function submitReport(
   db: DB,
@@ -190,11 +174,12 @@ export async function submitReport(
 ): Promise<SubmitOutcome> {
   // --- idempotency first: a retry must return success, not an error ---
   const prior = await db
-    .select({ id: reports.id, isLate: reports.isLate })
+    .select({ id: reports.id, isLate: reports.isLate, submittedBy:reports.submittedBy, projectDayId:reports.projectDayId, projectId:reports.projectId, phase:reports.phase })
     .from(reports)
     .where(eq(reports.clientSubmissionId, input.clientSubmissionId))
     .get();
   if (prior) {
+    if(!user.isActive || prior.submittedBy!==user.id || prior.projectId!==input.projectId || prior.projectDayId!==input.projectDayId || prior.phase!==input.phase)return {ok:false,reason:"forbidden",message:"Kunci pengiriman tidak sesuai dengan laporan ini"};
     return { ok: true, reportId: prior.id, isLate: Boolean(prior.isLate), idempotent: true };
   }
 
@@ -212,13 +197,14 @@ export async function submitReport(
     };
   }
 
-  // One live opening/closing per day.
-  if (input.phase !== "monitoring" && ctx.existingSubmitted) {
-    return {
-      ok: false,
-      reason: "duplicate_phase",
-      message: `Laporan ${input.phase} hari ini sudah ada. Gunakan Lihat/Edit.`,
-    };
+  if (ctx.day.reviewedAt !== null) return {ok:false, reason:"forbidden", message:"Hari ini sudah direview. Manager atau Admin perlu membatalkan review sebelum menambah laporan."};
+
+  if(!Number.isFinite(input.observedAt)||input.observedAt<=0||toLocalDate(input.observedAt,ctx.project.timezone)!==ctx.day.date)return {ok:false,reason:"validation",message:"Waktu kejadian harus berada pada tanggal laporan"};
+  const photoIds=[...input.photoIds,...input.results.flatMap(r=>r.photoIds)];
+  if(new Set(photoIds).size!==photoIds.length)return {ok:false,reason:"validation",message:"Satu foto tidak boleh dipakai pada beberapa lampiran sekaligus"};
+  for(const id of photoIds) {
+    const photo=raw.prepare("select id from photos where id=? and uploaded_by=? and owner_type='report' and owner_id=? and project_id=? and project_day_id=? and deleted_at is null").get(id,user.id,user.id,input.projectId,input.projectDayId);
+    if(!photo)return {ok:false,reason:"validation",message:"Foto tidak tersedia untuk laporan ini. Unggah foto baru pada laporan yang benar."};
   }
 
   const validation = validateResults(ctx.checklist, input.results);
@@ -254,13 +240,15 @@ export async function submitReport(
   // SYNCHRONOUS transaction — no await between BEGIN and COMMIT.
   // ---------------------------------------------------------------------
   const tx = raw.transaction(() => {
+    const freshDay=raw.prepare('select reviewed_at from project_days where id=?').get(input.projectDayId) as {reviewed_at:number|null}|undefined;
+    if(!freshDay || freshDay.reviewed_at !== null) throw new ForbiddenError("Hari sudah direview atau tidak ditemukan");
     raw
       .prepare(
         `insert into reports (id, project_id, project_day_id, phase, submitted_by,
-           client_submission_id, status, notes, phase_note, observed_at, submitted_at, is_late,
+           client_submission_id, status, notes, phase_note, handover_note, observed_at, submitted_at, is_late,
            device_time_offset_ms, latitude, longitude, location_accuracy_m,
            created_at, updated_at)
-         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         reportId,
@@ -272,6 +260,7 @@ export async function submitReport(
         "submitted",
         input.notes ?? null,
         input.phaseNote ?? null,
+        input.phase === "closing" ? input.handoverNote ?? null : null,
         input.observedAt,
         submittedAt,
         isLate ? 1 : 0,
@@ -295,30 +284,21 @@ export async function submitReport(
 
       // Link per-item photos to the check result.
       for (const photoId of r.photoIds) {
-        raw
-          .prepare(
-            `update photos set owner_type = 'check_result', owner_id = ?
-             where id = ? and owner_id = ?`,
-          )
-          .run(rid, photoId, user.id);
+        const claimed=raw.prepare("update photos set owner_type='check_result',owner_id=? where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").run(rid,photoId,user.id,user.id,input.projectId,input.projectDayId);
+        if(claimed.changes!==1)throw new ValidationError("Foto sudah dipakai atau berubah. Unggah ulang foto.");
       }
     }
 
     // Report-level photos.
     for (const photoId of input.photoIds) {
-      raw
-        .prepare(
-          `update photos set owner_type = 'report', owner_id = ?
-           where id = ? and owner_id = ?`,
-        )
-        .run(reportId, photoId, user.id);
+      const claimed=raw.prepare("update photos set owner_type='report',owner_id=? where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").run(reportId,photoId,user.id,user.id,input.projectId,input.projectDayId);
+      if(claimed.changes!==1)throw new ValidationError("Foto sudah dipakai atau berubah. Unggah ulang foto.");
     }
 
     // §4.5: closing carries a handover note for tomorrow's opening.
     if (input.phase === "closing" && input.handoverNote !== undefined) {
-      raw
-        .prepare(`update project_days set handover_note = ?, updated_at = ? where id = ?`)
-        .run(input.handoverNote ?? null, now, input.projectDayId);
+      const latest=raw.prepare("select id from reports where project_day_id=? and phase='closing' and status='submitted' and deleted_at is null order by observed_at desc,submitted_at desc,id desc limit 1").get(input.projectDayId) as {id:string}|undefined;
+      if(latest?.id===reportId)raw.prepare(`update project_days set handover_note = ?, updated_at = ? where id = ?`).run(input.handoverNote??null,now,input.projectDayId);
     }
 
     raw
@@ -343,21 +323,14 @@ export async function submitReport(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // The DB-level guard fired — translate it into a friendly message.
-    if (msg.includes("UNIQUE") && msg.includes("reports_one_per_phase")) {
-      return {
-        ok: false,
-        reason: "duplicate_phase",
-        message: `Laporan ${input.phase} hari ini sudah ada.`,
-      };
-    }
     if (msg.includes("UNIQUE") && msg.includes("client_submission")) {
       // Lost a race with an identical retry: treat as success.
       const again = await db
-        .select({ id: reports.id, isLate: reports.isLate })
+        .select({ id: reports.id, isLate: reports.isLate, submittedBy:reports.submittedBy, projectId:reports.projectId, projectDayId:reports.projectDayId, phase:reports.phase })
         .from(reports)
         .where(eq(reports.clientSubmissionId, input.clientSubmissionId))
         .get();
-      if (again) {
+      if (again && again.submittedBy===user.id && again.projectId===input.projectId && again.projectDayId===input.projectDayId && again.phase===input.phase) {
         return { ok: true, reportId: again.id, isLate: Boolean(again.isLate), idempotent: true };
       }
     }
@@ -485,6 +458,7 @@ export async function getReportForDayPhase(
         eq(reports.status, "submitted"),
       ),
     )
+    .orderBy(phase === "opening" ? asc(reports.observedAt) : desc(reports.observedAt), phase === "opening" ? asc(reports.submittedAt) : desc(reports.submittedAt), phase === "opening" ? asc(reports.id) : desc(reports.id))
     .get();
 
   if (!report) return null;
@@ -530,7 +504,7 @@ export async function getReportForDayPhase(
     submittedByName: submitter?.name ?? null,
     notes: report.notes,
     phaseNote: report.phaseNote,
-    handoverNote: day?.handoverNote ?? null,
+    handoverNote: report.handoverNote,
     latitude: report.latitude,
     longitude: report.longitude,
     locationAccuracyM: report.locationAccuracyM,
@@ -601,4 +575,12 @@ export function canEditDayReport(
     { ...factsInput, status: "submitted", deletedAt: null },
     editDeadline,
   );
+}
+
+/** All submitted reports in a phase, ordered by event time then server timestamp. */
+export async function listPhaseReports(db: DB, projectDayId: string, phase: Phase) {
+  return db.select({ id:reports.id,submittedAt:reports.submittedAt,observedAt:reports.observedAt,notes:reports.notes,phaseNote:reports.phaseNote,submittedByName:users.name })
+    .from(reports).leftJoin(users,eq(users.id,reports.submittedBy))
+    .where(and(eq(reports.projectDayId,projectDayId),eq(reports.phase,phase),isNull(reports.deletedAt),eq(reports.status,"submitted")))
+    .orderBy(asc(reports.observedAt),asc(reports.submittedAt),asc(reports.id));
 }

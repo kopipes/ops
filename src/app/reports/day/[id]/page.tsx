@@ -35,10 +35,14 @@ function ReportSection({
   title,
   block,
   tz,
+  projectId,
+  dayId,
 }: {
   title: string;
   block: ReportBlock | null;
   tz: string;
+  projectId: string;
+  dayId: string;
 }) {
   if (!block) {
     return (
@@ -58,7 +62,7 @@ function ReportSection({
 
 
   return (
-    <section className="mb-4">
+    <section id={`report-${block.reportId}`} className="mb-4 scroll-mt-4">
       <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
         {title}
       </h2>
@@ -67,7 +71,7 @@ function ReportSection({
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
         <p className="text-xs" style={{ color: "var(--muted)" }}>
-          Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {fmtTime(block.submittedAt, tz)}
+          Waktu kejadian: {fmtTime(block.observedAt, tz)} · Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {fmtTime(block.submittedAt, tz)}
           {block.isLate ? (
             <span style={{ color: "#ea580c" }}> · terlambat</span>
           ) : null}
@@ -114,9 +118,10 @@ function ReportSection({
           </div>
         ) : null}
 
+        {block.handoverNote ? <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Handover laporan ini:</strong> {block.handoverNote}</p> : null}
         {block.notes ? <p className="mt-1 text-sm whitespace-pre-wrap">{block.notes}</p> : null}
 
-        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} />
+        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} issueContext={{projectId,dayId,phase:block.phase}} />
 
         <PhotoGrid photos={block.photos} />
       </div>
@@ -212,34 +217,9 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
       ) : null}
 
       <div id="report-checklists" className="scroll-mt-5" />
-      <ReportSection title="Opening" block={detail.opening} tz={tz} />
-
-      {detail.monitoring.length > 0 ? (
-        <section className="mb-4">
-          <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Monitoring ({detail.monitoring.length})
-          </h2>
-          <ul className="flex flex-col gap-2">
-            {detail.monitoring.map((m) => (
-              <li
-                key={m.reportId}
-                className="rounded-lg border px-3 py-2"
-                style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              >
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {fmtTime(m.submittedAt, tz)}
-                  {m.editLabel ? <span style={{ color: "#9a3412" }}> · Diedit oleh {m.editLabel.editedByName ?? "—"}, {fmtTime(m.editLabel.editedAt, tz)}</span> : null}
-                </p>
-                <p className="text-sm whitespace-pre-wrap">{m.notes}</p>
-                <ReportChecklist reportId={m.reportId} phase="Monitoring" results={m.results} />
-                <PhotoGrid photos={m.photos} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <ReportSection title="Closing" block={detail.closing} tz={tz} />
+      {detail.openingReports.length ? detail.openingReports.map((block,index)=><ReportSection key={block.reportId} title={`Opening ${index+1} dari ${detail.openingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>) : <ReportSection title="Opening" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>}
+      {detail.monitoring.map((block,index)=><ReportSection key={block.reportId} title={`Monitoring ${index+1} dari ${detail.monitoring.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>)}
+      {detail.closingReports.length ? detail.closingReports.map((block,index)=><ReportSection key={block.reportId} title={`Closing ${index+1} dari ${detail.closingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>) : <ReportSection title="Closing" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>}
 
       {detail.day.handoverNote ? (
         <div

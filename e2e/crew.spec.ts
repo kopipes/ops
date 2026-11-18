@@ -157,7 +157,7 @@ test("monitoring can be submitted repeatedly (§4.4)", async ({ page, browser })
   await expect(page.getByText(/2 laporan/)).toBeVisible();
 });
 
-test("a submitted opening is read-only and blocks a second one (§4.6)", async ({ page }) => {
+test("a submitted opening remains in history and another report can be added", async ({ page }) => {
   await login(page, "manager@ops.test");
   const id = await createTodayProject(page, `Dup Guard ${Date.now()}`, { lead: true });
 
@@ -166,11 +166,17 @@ test("a submitted opening is read-only and blocks a second one (§4.6)", async (
   await page.getByRole("button", { name: /Submit Opening/ }).click();
   await expect(page).toHaveURL(/submitted=/, { timeout: 20_000 });
 
-  // Revisit: must render read-only with the explanation and no submit button.
   await page.goto(`${BASE}/projects/${id}/days/${today()}/opening`);
-  await expect(page.getByText(/Opening sudah diisi/)).toBeVisible();
-  await expect(page.getByText(/Satu laporan per hari/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Submit Opening/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", {name:"Laporan Opening (1)",exact:true})).toBeVisible();
+  await expect(page.getByRole("button", {name:/Submit Opening/})).toBeVisible();
+  await page.getByLabel(/Jam kejadian/).fill("10:45");
+  await answerAllOk(page);
+  await page.getByRole("button", {name:/Submit Opening/}).click();
+  await expect(page).toHaveURL(/submitted=/);
+  await page.goto(`${BASE}/projects/${id}/days/${today()}/opening`);
+  await expect(page.getByRole("heading", {name:"Laporan Opening (2)",exact:true})).toBeVisible();
+  await expect(page.getByText(/10[.:]45/).first()).toBeVisible();
+
 });
 
 test("plain crew sees opening read-only (§4.6)", async ({ page, browser }) => {

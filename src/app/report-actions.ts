@@ -1,9 +1,11 @@
 "use server";
 
+import { zonedToUtc } from "@/lib/datetime";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb, getRawDb } from "@/server/db";
 import { requireUser } from "@/server/auth/current-user";
-import { projects, reports } from "@/server/db/schema";
+import { projectDays, projects, reports } from "@/server/db/schema";
 import { submitReport, type CheckResultInput, type Phase } from "@/server/services/reports";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
@@ -86,6 +88,16 @@ export async function submitReportAction(
     const db = getDb();
     const raw = getRawDb();
 
+    const selectedTime=String(formData.get("observedTime")??"");
+    let eventAt=observedAt;
+    if(!selectedTime)return {error:"Jam kejadian wajib diisi"};
+    if(selectedTime) {
+      if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime))return {error:"Jam kejadian tidak valid"};
+      const project=db.select({timezone:projects.timezone}).from(projects).where(eq(projects.id,projectId)).get();
+      const day=db.select({date:projectDays.date,projectId:projectDays.projectId}).from(projectDays).where(eq(projectDays.id,projectDayId)).get();
+      if(!project||!day||day.projectId!==projectId)return {error:"Hari project tidak valid"};
+      eventAt=zonedToUtc(day.date,selectedTime,project.timezone);
+    }
     const outcome = await submitReport(db, raw, session.user, {
       projectId,
       projectDayId,
@@ -93,7 +105,7 @@ export async function submitReportAction(
       clientSubmissionId,
       notes: notes === "" ? null : notes,
       phaseNote,
-      observedAt,
+      observedAt:eventAt,
       results: parseResults(formData),
       photoIds: formData.getAll("generalPhotos").map(String).filter(Boolean),
       handoverNote: phase === "closing" ? (handoverNote ?? "") : undefined,
@@ -104,6 +116,7 @@ export async function submitReportAction(
 
     if (!outcome.ok) return { error: outcome.message };
 
+    revalidatePath("/", "layout");
     // Land back on the project day page so the crew sees the result.
     const project = await db
       .select({ id: projects.id })

@@ -25,6 +25,8 @@ import {
   issues,
   photos,
   projectDays,
+  reports,
+  reportCheckResults,
   projects,
   users,
 } from "@/server/db/schema";
@@ -169,6 +171,20 @@ export async function createIssue(
     throw new ForbiddenError("Kamu tidak bisa membuat issue pada project ini");
   }
 
+  if(input.projectDayId) {
+    const day=db.select({projectId:projectDays.projectId}).from(projectDays).where(eq(projectDays.id,input.projectDayId)).get();
+    if(!day||day.projectId!==input.projectId)throw new ValidationError("Hari issue tidak sesuai dengan project");
+  }
+  if(input.reportId || input.checkResultId) {
+    if(!input.reportId)throw new ValidationError("Laporan asal wajib disertakan untuk hasil checklist");
+    const report=db.select().from(reports).where(eq(reports.id,input.reportId)).get();
+    if(!report||report.deletedAt||report.status!=="submitted"||report.projectId!==input.projectId||report.projectDayId!==input.projectDayId||(input.phase&&report.phase!==input.phase))throw new ValidationError("Laporan asal tidak sesuai dengan project, hari, atau fase");
+    if(input.checkResultId) {
+      const result=db.select({reportId:reportCheckResults.reportId,result:reportCheckResults.result}).from(reportCheckResults).where(eq(reportCheckResults.id,input.checkResultId)).get();
+      if(!result||result.reportId!==report.id||result.result!=="not_ok")throw new ValidationError("Hasil checklist tidak berasal dari laporan ini");
+    }
+  }
+
   // §4.7: at least one photo.
   if (input.photoIds.length === 0) {
     throw new ValidationError("Minimal 1 foto wajib dilampirkan");
@@ -194,7 +210,8 @@ export async function createIssue(
   const issueId = randomUUID();
   const now = Date.now();
 
-  await db.insert(issues).values({
+  db.transaction(tx=>{
+  tx.insert(issues).values({
     id: issueId,
     code,
     projectId: input.projectId,
@@ -217,10 +234,10 @@ export async function createIssue(
     authorDivision: identity.division,
     createdAt: now,
     updatedAt: now,
-  });
+  }).run();
 
   // First timeline entry: "created".
-  await db.insert(issueUpdates).values({
+  tx.insert(issueUpdates).values({
     id: randomUUID(),
     issueId,
     userId: user.id,
@@ -237,13 +254,10 @@ export async function createIssue(
       ...(input.picExternal ? { pic_external: [null, input.picExternal] } : {}),
     } satisfies ChangesJson),
     createdAt: now,
-  });
+  }).run();
 
-  // Attach photos to the issue (they were uploaded owned by the user).
-  await db
-    .update(photos)
-    .set({ ownerType: "issue", ownerId: issueId })
-    .where(and(inArray(photos.id, input.photoIds), eq(photos.uploadedBy, user.id)));
+  claimIssuePhotos(tx,user,input.photoIds,input.projectId,"issue",issueId);
+  });
 
   return { issueId, code };
 }
@@ -255,7 +269,7 @@ async function assertPhotosUsable(
   projectId: string,
 ) {
   const rows = await db
-    .select({ id: photos.id, uploadedBy: photos.uploadedBy, projectId: photos.projectId, deletedAt: photos.deletedAt })
+    .select({ id: photos.id, uploadedBy: photos.uploadedBy, projectId: photos.projectId, deletedAt: photos.deletedAt, ownerType:photos.ownerType, ownerId:photos.ownerId })
     .from(photos)
     .where(inArray(photos.id, photoIds));
 
@@ -266,7 +280,15 @@ async function assertPhotosUsable(
     if (r.deletedAt) throw new ValidationError("Ada foto yang sudah dihapus");
     if (r.uploadedBy !== user.id) throw new ValidationError("Foto milik user lain tidak bisa dipakai");
     if (r.projectId !== projectId) throw new ValidationError("Foto berasal dari project lain");
+    if(r.ownerType!=="report"||r.ownerId!==user.id)throw new ValidationError("Foto sudah terlampir pada laporan atau issue lain. Unggah foto baru.");
   }
+}
+
+function claimIssuePhotos(db:Pick<DB,"update">, user:ActingUser, photoIds:string[], projectId:string, ownerType:"issue"|"issue_update", ownerId:string) {
+  if(!photoIds.length)return;
+  if(new Set(photoIds).size!==photoIds.length)throw new ValidationError("Foto yang sama dikirim lebih dari satu kali");
+  const claimed=db.update(photos).set({ownerType,ownerId}).where(and(inArray(photos.id,photoIds),eq(photos.uploadedBy,user.id),eq(photos.projectId,projectId),eq(photos.ownerType,"report"),eq(photos.ownerId,user.id),isNull(photos.deletedAt))).run();
+  if(claimed.changes!==photoIds.length)throw new ValidationError("Foto sudah dipakai atau berubah. Unggah foto baru.");
 }
 
 // ---------------------------------------------------------------------------
@@ -328,8 +350,10 @@ export async function updateIssueFields(
     return { changed: false, changes: {} };
   }
 
+  const identity = await snapshotIdentity(db,user.id);
+  db.transaction(tx=>{
   const now = Date.now();
-  await db
+  tx
     .update(issues)
     .set({
       title: input.title,
@@ -342,17 +366,11 @@ export async function updateIssueFields(
       dueAt: input.dueAt ?? null,
       updatedAt: now,
     })
-    .where(eq(issues.id, issueId));
+    .where(eq(issues.id, issueId)).run();
 
-  if (newPhotoIds.length > 0) {
-    await db
-      .update(photos)
-      .set({ ownerType: "issue", ownerId: issueId })
-      .where(and(inArray(photos.id, newPhotoIds), eq(photos.uploadedBy, user.id)));
-  }
+  claimIssuePhotos(tx,user,newPhotoIds,current.projectId,"issue",issueId);
 
-  const identity = await snapshotIdentity(db, user.id);
-  await db.insert(issueUpdates).values({
+  tx.insert(issueUpdates).values({
     id: randomUUID(),
     issueId,
     userId: user.id,
@@ -365,6 +383,7 @@ export async function updateIssueFields(
     statusTo: null,
     changesJson: JSON.stringify(changes),
     createdAt: now,
+  }).run();
   });
 
   return { changed: true, changes };
@@ -474,7 +493,8 @@ export async function addIssueComment(
   const updateId = randomUUID();
   const now = Date.now();
 
-  await db.insert(issueUpdates).values({
+  db.transaction(tx=>{
+  tx.insert(issueUpdates).values({
     id: updateId,
     issueId,
     userId: user.id,
@@ -487,14 +507,10 @@ export async function addIssueComment(
     statusTo: null,
     changesJson: null,
     createdAt: now,
-  });
+  }).run();
 
-  if (photoIds.length > 0) {
-    await db
-      .update(photos)
-      .set({ ownerType: "issue_update", ownerId: updateId })
-      .where(and(inArray(photos.id, photoIds), eq(photos.uploadedBy, user.id)));
-  }
+  claimIssuePhotos(tx,user,photoIds,current.projectId,"issue_update",updateId);
+  });
 }
 
 /**

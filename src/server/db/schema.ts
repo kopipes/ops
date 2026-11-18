@@ -265,6 +265,8 @@ export const reports = sqliteTable("reports", {
    * (which is about tomorrow).
    */
   phaseNote: text("phase_note"),
+  /** Each closing keeps its own handover; the day points to the latest closing. */
+  handoverNote: text("handover_note"),
   /**
    * Reported time of the event (monitoring). User-editable, client clock.
    * NOT authoritative — `submitted_at` / `created_at` (server) are (§9.5).
@@ -277,7 +279,7 @@ export const reports = sqliteTable("reports", {
   latitude: text("latitude"),
   longitude: text("longitude"),
   locationAccuracyM: integer("location_accuracy_m"),
-  // Soft delete (§9.5 #6) — required by the partial unique index below.
+  // Soft delete preserves report history (§9.5 #6).
   deletedAt: ts("deleted_at"),
   deletedBy: text("deleted_by").references(() => users.id),
   deleteReason: text("delete_reason"),
@@ -287,16 +289,7 @@ export const reports = sqliteTable("reports", {
   clientSubmissionUx: uniqueIndex("reports_client_submission_ux").on(t.clientSubmissionId),
   dayPhaseIx: index("reports_day_phase_ix").on(t.projectDayId, t.phase),
   submitterIx: index("reports_submitter_ix").on(t.submittedBy, t.submittedAt),
-  /**
-   * At most one live opening and one live closing per project day.
-   * Drafts are excluded so an abandoned draft cannot block the real submission,
-   * and soft-deleted rows are excluded so a deleted report can be replaced.
-   */
-  onePerPhaseUx: uniqueIndex("reports_one_per_phase_ux")
-    .on(t.projectDayId, t.phase)
-    .where(
-      sql`${t.phase} IN ('opening','closing') AND ${t.deletedAt} IS NULL AND ${t.status} = 'submitted'`,
-    ),
+
 }));
 
 export const reportCheckResults = sqliteTable("report_check_results", {

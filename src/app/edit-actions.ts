@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getDb, getRawDb } from "@/server/db";
 import { requireUser } from "@/server/auth/current-user";
-import { applyReportEdit } from "@/server/services/report-edits";
+import { zonedToUtc } from "@/lib/datetime";
+import { applyReportEdit, getEditableReport } from "@/server/services/report-edits";
 import type { CheckResultInput } from "@/server/services/reports";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
@@ -37,8 +38,15 @@ export async function editReportAction(
   const notesRaw = String(formData.get("notes") ?? "").trim();
 
   try {
+    const selectedTime=String(formData.get("observedTime")??"");
+    const loaded=await getEditableReport(getDb(),session.user,reportId);
+    if(!loaded)return {error:"Laporan tidak ditemukan"};
+    if(selectedTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime))return {error:"Jam kejadian tidak valid"};
     await applyReportEdit(getDb(), getRawDb(), session.user, reportId, {
       notes: notesRaw === "" ? null : notesRaw,
+      observedAt:selectedTime?zonedToUtc(loaded.report.dayDate,selectedTime,loaded.report.timezone):undefined,
+      handoverNote:formData.has("handoverNote")?String(formData.get("handoverNote")??"").trim()||null:undefined,
+      phaseNote:formData.has("phaseNote")?String(formData.get("phaseNote")??"").trim()||null:undefined,
       results,
     });
   } catch (err) {
@@ -49,6 +57,7 @@ export async function editReportAction(
     return { error: "Terjadi kesalahan. Coba lagi." };
   }
 
+  revalidatePath("/", "layout");
   revalidatePath(`/reports`);
   revalidatePath(`/reports/edit/${reportId}`);
   return { ok: true };

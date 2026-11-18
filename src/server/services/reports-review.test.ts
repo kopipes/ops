@@ -1,3 +1,4 @@
+import { zonedToUtc } from "@/lib/datetime";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -98,7 +99,7 @@ function openingInput(
     phase: "opening",
     clientSubmissionId: `cs-${Math.random()}`,
     notes: "catatan",
-    observedAt: now,
+    observedAt: zonedToUtc(db.select().from(schema.projectDays).where(eq(schema.projectDays.id,projectDayId)).get()!.date,"09:00","Asia/Jakarta"),
     results: results.map((r) => ({
       projectChecklistItemId: r.id,
       result: r.result,

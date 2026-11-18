@@ -569,3 +569,9 @@ describe("getIssueDetail", () => {
     expect(asMgr!.canClose).toBe(true);
   });
 });
+
+it("does not transfer an already-attached report photo into an issue", async () => {
+ await db.update(schema.photos).set({ownerType:"check_result",ownerId:"original-result"}).where(eq(schema.photos.id,"ph-1"));
+ await expect(createIssue(db,crew,issueInput())).rejects.toThrow(/terlampir/);
+ expect(await db.select().from(schema.issues)).toHaveLength(0);expect((await db.select().from(schema.photos).where(eq(schema.photos.id,"ph-1")).get())?.ownerId).toBe("original-result");
+});

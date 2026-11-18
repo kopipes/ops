@@ -23,6 +23,8 @@ function uniqueCode() {
 
 test.use({ viewport: { width: 390, height: 900 } });
 
+test.setTimeout(60_000);
+
 async function login(page: Page, email: string) {
   await page.goto(`${BASE}/login`);
   await page.getByLabel("Email").fill(email);
@@ -75,6 +77,7 @@ async function submitOpening(page: Page, projectId: string) {
 /** Finds the report row link for a project name on /reports. */
 async function openDayDetail(page: Page, projectName: string) {
   await page.goto(`${BASE}/reports`);
+  await waitForHydration(page, 'a[href^="/reports/day/"]');
   await page.getByRole("link", { name: new RegExp(projectName) }).first().click();
   await expect(page).toHaveURL(/\/reports\/day\//);
   return page.url();

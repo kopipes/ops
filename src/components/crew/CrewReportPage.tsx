@@ -5,7 +5,8 @@ import { ReportForm } from "@/components/crew/ReportForm";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { loadDayPageContext } from "@/server/services/day-context";
-import { listMonitoringReports, type Phase } from "@/server/services/reports";
+import { listPhaseReports, type Phase } from "@/server/services/reports";
+import { formatReportTimestamp } from "@/lib/datetime";
 import { submitReportAction } from "@/app/report-actions";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -37,17 +38,15 @@ export async function CrewReportPage({
   });
   if (!ctx) notFound();
 
-  // §4.6: only one live opening/closing per day; if it exists, show it read-only.
-  const alreadySubmitted = phase !== "monitoring" && ctx.existing !== null;
+  const history = await listPhaseReports(db, ctx.day.id, phase);
   // §13.1: a reviewed day is locked for everyone.
   const reviewed = ctx.reviewedAt !== null;
-  const readOnly = !ctx.canSubmit || alreadySubmitted || reviewed;
+  const readOnly = !ctx.canSubmit || reviewed;
 
   let readOnlyReason: string | undefined;
   if (reviewed) {
     readOnlyReason = `Hari ini sudah direview oleh ${ctx.reviewedByName ?? "reviewer"}. Laporan tidak bisa diubah (§13.1).`;
-  } else if (alreadySubmitted) {
-    readOnlyReason = `Laporan ${PHASE_LABEL[phase]} hari ini sudah diisi. Satu laporan per hari.`;
+
   } else if (!ctx.canSubmit) {
     readOnlyReason =
       phase === "monitoring"
@@ -55,8 +54,7 @@ export async function CrewReportPage({
         : "Hanya Head Crew, petugas hari ini, Manager, atau Admin yang bisa mengisi fase ini.";
   }
 
-  const monitoringCount =
-    phase === "monitoring" ? (await listMonitoringReports(db, ctx.day.id)).length : 0;
+  const monitoringCount = history.length;
 
   return (
     <AppShell>
@@ -78,7 +76,7 @@ export async function CrewReportPage({
               {ctx.day.isOutOfRange ? " · di luar rentang" : ""}
             </p>
           </div>
-          {ctx.overdue && !alreadySubmitted ? (
+          {ctx.overdue && history.length === 0 ? (
             <span
               className="shrink-0 rounded-full px-2 py-0.5 text-[11px]"
               style={{ background: "#fee2e2", color: "#991b1b" }}
@@ -89,18 +87,29 @@ export async function CrewReportPage({
         </div>
       </header>
 
+      {history.length > 0 ? <section className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">Laporan {PHASE_LABEL[phase]} ({history.length})</h2>{!readOnly ? <a href="#form-laporan" className="btn-secondary text-xs">+ Tambah laporan {PHASE_LABEL[phase]}</a> : null}</div>
+        <ol className="mt-3 flex flex-col gap-3">{history.map((report,index)=><li key={report.id} className="rounded-lg border border-[var(--border)] p-3">
+          <p className="text-sm font-medium">Laporan {index+1} · {report.submittedByName ?? "—"}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Waktu kejadian: {formatReportTimestamp(report.observedAt,ctx.project.timezone)}<br/>Waktu pengisian: {formatReportTimestamp(report.submittedAt,ctx.project.timezone)}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm">{report.phaseNote || report.notes || "Laporan checklist"}</p>
+          <a href={`/reports/edit/${report.id}`} className="mt-2 inline-flex min-h-tap items-center text-xs text-[var(--accent)]">Lihat / Edit laporan {index+1}</a>
+        </li>)}</ol>
+      </section> : null}
+      <div id="form-laporan" className="scroll-mt-4" />
       <ReportForm
         action={submitReportAction}
         phase={phase}
         projectId={projectId}
         projectDayId={ctx.day.id}
         dayDate={ctx.day.date}
+        defaultObservedTime={new Intl.DateTimeFormat("en-GB",{timeZone:ctx.project.timezone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date())}
         timezone={ctx.project.timezone}
         items={ctx.items}
         readOnly={readOnly}
         readOnlyReason={readOnlyReason}
         existing={
-          ctx.existing
+          readOnly && ctx.existing
             ? {
                 reportId: ctx.existing.reportId,
                 submittedByName: ctx.existing.submittedByName,

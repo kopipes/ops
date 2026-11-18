@@ -259,7 +259,7 @@ Aturan yang ditegakkan di server:
 | `/projects/[id]/days/[date]/closing` | Head Crew / petugas / manager / admin | Form closing + handover |
 
 Aturan yang ditegakkan **di server**:
-- **1 opening & 1 closing per project per hari** — dijaga oleh partial unique index di database, bukan hanya di UI.
+- **Opening, monitoring, dan closing dapat memiliki beberapa laporan per hari.** Setiap laporan punya jam kejadian, waktu pengisian server, checklist, foto, dan riwayat edit sendiri. Unique client submission ID tetap mencegah duplikasi saat retry. Hari yang direview menolak laporan/edit baru sampai review dibatalkan.
 - **Idempotensi**: setiap submit membawa `client_submission_id`; double tap / retry jaringan tidak membuat laporan ganda.
 - **Submit atomik**: laporan + hasil checklist + link foto ditulis dalam satu transaksi sinkron (`better-sqlite3` tidak mendukung transaksi async). Diuji dengan trigger yang memaksa gagal di akhir transaksi.
 - **Validasi**: item wajib harus dijawab; "Tidak OK" wajib catatan; item `requires_photo` wajib ≥ 1 foto.
@@ -332,3 +332,24 @@ Halaman `/print/*` adalah route **terautentikasi biasa**: Chromium meneruskan co
   proxy, gunakan pool bersama 20/15 menit. Batas seluruh proses 100/15 menit,
   dihitung sebelum hashing; cache dibatasi dan kedaluwarsa. Seperti login,
   limiter in-memory harus dipindah ke penyimpanan bersama jika memakai beberapa proses.
+
+
+### Impor checklist Excel dan laporan berulang
+
+Di **Master Checklist**, pilih **Unduh template Excel**, isi sheet `Checklist`,
+lalu **Upload Excel → Periksa file → Impor**. Baris data pertama adalah contoh
+bertanda `CONTOH` pada kolom `Jenis baris` dan otomatis dilewati. Contoh boleh
+dihapus. Baris data menggunakan `DATA` atau kolom penanda kosong. Maksimal 1.000
+item / 2 MB; kesalahan ditampilkan per baris dan batch bermasalah tidak disimpan.
+Duplikat fase + divisi + nama item dilewati tanpa menimpa data lama. Admin bisa
+mengimpor global; Manager hanya ke divisinya. Nama template opsional membuat
+hasil impor langsung tersedia pada wizard project.
+
+Thumbnail foto pada pengisian laporan, issue, edit, dan detail dapat diklik untuk
+preview modal. Foto lampiran tidak dapat dipindahkan ke laporan/issue lain.
+
+Semua fase dapat ditambah berulang dengan jam kejadian pada timezone project.
+Waktu pengisian server tetap dicatat terpisah. Edit dilakukan per laporan dengan
+riwayat revisi. Ringkasan checklist memakai jawaban kejadian terakhir per item;
+seluruh laporan tetap muncul dalam detail dan PDF. Tiap closing menyimpan
+handover sendiri, dan kejadian closing terakhir menjadi handover untuk besok.

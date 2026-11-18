@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PhotoGallery } from "@/components/reports/PhotoGallery";
 import { compressPhoto } from "@/lib/image-compression";
 import { clearDraft, draftKey, loadDraft, newSubmissionId, saveDraft } from "@/lib/drafts";
 import { enqueue, listJobs, processQueue, resumeQueue } from "@/lib/upload-queue";
@@ -41,6 +42,7 @@ interface Props {
   projectId: string;
   projectDayId: string;
   dayDate: string;
+  defaultObservedTime: string;
   timezone: string;
   items: ChecklistItemView[];
   readOnly: boolean;
@@ -72,6 +74,7 @@ export function ReportForm({
   projectId,
   projectDayId,
   dayDate,
+  defaultObservedTime,
   timezone,
   items,
   readOnly,
@@ -87,6 +90,7 @@ export function ReportForm({
     return init;
   });
   const [notes, setNotes] = useState("");
+  const [observedTime, setObservedTime] = useState(defaultObservedTime);
   const [phaseNote, setPhaseNote] = useState(existing?.phaseNote ?? "");
   const [handoverNote, setHandoverNote] = useState(existing?.handoverNote ?? "");
   const [generalPhotoIds, setGeneralPhotoIds] = useState<string[]>([]);
@@ -124,6 +128,7 @@ export function ReportForm({
         }
         setAnswers(next);
         setNotes(draft.notes);
+        if(draft.observedTime)setObservedTime(draft.observedTime);
         setPhaseNote(draft.phaseNote ?? "");
         setGeneralPhotoIds(draft.photoIds);
         if (draft.handoverNote) setHandoverNote(draft.handoverNote);
@@ -139,7 +144,7 @@ export function ReportForm({
 
   // --- autosave on every change ---
   useEffect(() => {
-    if (!hydrated || readOnly) return;
+    if (!hydrated || readOnly || pending) return;
     const timer = setTimeout(() => {
       void saveDraft({
         key,
@@ -149,6 +154,7 @@ export function ReportForm({
         notes,
         phaseNote,
         observedAt: Date.now(),
+        observedTime,
         /*
          * Persist only items the crew actually answered. Coercing an unanswered
          * item to "ok" made the draft restore it as answered-but-photoless, so
@@ -170,7 +176,7 @@ export function ReportForm({
       });
     }, 600);
     return () => clearTimeout(timer);
-  }, [hydrated, readOnly, answers, notes, phaseNote, generalPhotoIds, handoverNote, key, projectId, projectDayId, phase]);
+  }, [hydrated, readOnly, pending, observedTime, answers, notes, phaseNote, generalPhotoIds, handoverNote, key, projectId, projectDayId, phase]);
 
   // --- resume uploads left over from a previous session (§8.4) ---
   useEffect(() => {
@@ -285,15 +291,15 @@ export function ReportForm({
     setError(null);
     setPending(true);
     formData.set("clientSubmissionId", submissionIdRef.current);
-    const res = await action({}, formData);
-    setPending(false);
-    if (res.error) {
-      setError(res.error);
-      return;
-    }
-    // Success: the draft is no longer needed. A fresh id is generated next time.
-    await clearDraft(key);
-    if (res.redirectTo) window.location.href = res.redirectTo;
+    try {
+      const res = await action({}, formData);
+      if (res.error) { setPending(false); setError(res.error); return; }
+      // Keep autosave paused after success so a late timer cannot resurrect a
+      // submitted draft and reuse its idempotency key for the next report.
+      await clearDraft(key);
+      if (res.redirectTo) window.location.href = res.redirectTo;
+      else setPending(false);
+    } catch { setPending(false); setError("Laporan belum dapat disimpan. Coba lagi."); }
   };
 
   // -------------------- read-only rendering --------------------
@@ -411,6 +417,7 @@ export function ReportForm({
         </>
       ) : null}
 
+      <label className="flex flex-col gap-1 text-sm font-medium">Jam kejadian ({timezone})<input type="time" name="observedTime" disabled={!hydrated || pending} value={observedTime} onChange={e=>setObservedTime(e.target.value)} required className="min-h-tap rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-base"/><span className="text-xs font-normal text-[var(--muted)]">Tanggal {dayDate}. Waktu pengisian dicatat otomatis saat laporan disimpan.</span></label>
       {/* Progress (§4.3 no.6) */}
       {items.length > 0 ? (
         <div>
@@ -600,6 +607,7 @@ export function ReportForm({
                           {a?.uploading ? `Mengupload ${a.uploading} foto…` : ""}
                           {a && a.photoIds.length > 0 ? `${a.photoIds.length} foto terlampir` : ""}
                         </p>
+                        <PhotoGallery small photos={(a?.photoIds ?? []).map((id, index) => ({ id, label: `Foto ${item.label} ${index + 1}` }))} />
                       </div>
                     ) : null}
                   </li>
@@ -706,6 +714,8 @@ export function ReportForm({
         ) : null}
       </section>
 
+      <PhotoGallery photos={generalPhotoIds.map((id, index) => ({ id, label: `Foto laporan ${index + 1}` }))} />
+
       {/* GPS status (§8.5) */}
       <p className="text-xs" style={{ color: "var(--muted)" }}>
         {gps
@@ -786,7 +796,7 @@ export function ReportForm({
 
       {phase === "monitoring" ? (
         <p className="text-xs" style={{ color: "var(--muted)" }}>
-          Sudah ada {monitoringCount} laporan monitoring hari ini. Kamu bisa menambah lagi kapan saja.
+          Sudah ada {monitoringCount} laporan {PHASE_TITLE[phase]} hari ini. Kamu bisa menambah lagi kapan saja.
         </p>
       ) : null}
 

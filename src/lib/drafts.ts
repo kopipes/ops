@@ -29,6 +29,7 @@ export interface ReportDraft {
   notes: string;
   phaseNote?: string;
   observedAt: number;
+  observedTime?: string;
   results: DraftCheckResult[];
   photoIds: string[];
   handoverNote?: string;

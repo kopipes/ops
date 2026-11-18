@@ -17,11 +17,21 @@ export function EditReportForm({
   action,
   reportId,
   notes,
+  phaseNote,
+  handoverNote,
+  observedTime,
+  phase,
+  timezone,
   results,
 }: {
   action: (prev: EditReportState, formData: FormData) => Promise<EditReportState>;
   reportId: string;
   notes: string | null;
+  phaseNote: string | null;
+  handoverNote: string | null;
+  observedTime: string;
+  phase: string;
+  timezone: string;
   results: EditableResult[];
 }) {
   const [state, setState] = useState<EditReportState>({});
@@ -74,6 +84,9 @@ export function EditReportForm({
         </div>
       ))}
 
+      <label className="flex flex-col gap-1 text-sm">Jam kejadian ({timezone})<input type="time" name="observedTime" defaultValue={observedTime} required className="min-h-tap rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-base"/></label>
+      {phase !== "monitoring" ? <label className="flex flex-col gap-1 text-sm">Isi laporan {phase}<textarea aria-label={`Isi laporan ${phase}`} name="phaseNote" defaultValue={phaseNote??""} rows={4} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-base"/></label> : null}
+      {phase === "closing" ? <label className="flex flex-col gap-1 text-sm">Handover laporan ini<textarea aria-label="Handover laporan ini" name="handoverNote" defaultValue={handoverNote??""} rows={3} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-base"/></label>:null}
       <ul className="flex flex-col gap-2">
         {results.map((r) => {
           const a = answers[r.projectChecklistItemId];
@@ -144,6 +157,7 @@ export function EditReportForm({
         </span>
         <textarea
           name="notes"
+          aria-label="Catatan umum"
           defaultValue={notes ?? ""}
           rows={2}
           className="w-full rounded-lg border px-3 py-2 text-base"

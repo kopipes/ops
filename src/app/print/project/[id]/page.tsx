@@ -146,10 +146,12 @@ export default async function PrintRecapPage({
               )}
             </div>
 
-            {(["opening", "closing"] as const).map((phase) => {
-              const block = phase === "opening" ? d.opening : d.closing;
+            {(["opening", "closing"] as const).flatMap(phase => {
+              const blocks=phase === "opening" ? d.openingReports : d.closingReports;
+              return (blocks.length?blocks:[null]).map(block=>({phase,block}));
+            }).map(({phase,block}) => {
               return (
-                <div key={phase} style={{ marginBottom: 6 }}>
+                <div key={block?.reportId ?? phase} style={{ marginBottom: 6 }}>
                   <h3 style={{ margin: "4px 0 2px" }}>{phaseLabel(phase)}</h3>
                   {!block ? (
                     <div className="bad" style={{ fontSize: 10 }}>
@@ -158,7 +160,7 @@ export default async function PrintRecapPage({
                   ) : (
                     <>
                       <div className="muted" style={{ fontSize: 9 }}>
-                        Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, d.project.timezone)}
+                        Waktu kejadian: {formatDateTime(block.observedAt, d.project.timezone)} · Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, d.project.timezone)}
                         {block.editLabel ? ` · Diedit oleh ${block.editLabel.editedByName ?? "—"}, ${formatDateTime(block.editLabel.editedAt, d.project.timezone)}` : ""}
                         {block.isLate ? " · TERLAMBAT" : ""}
                       </div>
@@ -170,7 +172,8 @@ export default async function PrintRecapPage({
                           {block.phaseNote}
                         </div>
                       ) : null}
-                      {block.notes ? <div style={{ fontSize: 10 }}>{block.notes}</div> : null}
+                      {block.handoverNote ? <div><strong>Handover laporan ini:</strong> {block.handoverNote}</div>:null}
+                {block.notes ? <div style={{ fontSize: 10 }}>{block.notes}</div> : null}
                       <ul style={{ fontSize: 10 }}>
                         {[...block.results]
                           .sort((a, b) => {
@@ -205,7 +208,7 @@ export default async function PrintRecapPage({
                 <ul style={{ fontSize: 10 }}>
                   {d.monitoring.map((m) => (
                     <li key={m.reportId}>
-                      Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(m.submittedAt, d.project.timezone)} — {m.notes}
+                      Diisi oleh {m.submittedByName ?? "—"} · Waktu kejadian: {formatDateTime(m.observedAt,d.project.timezone)} · Waktu pengisian: {formatDateTime(m.submittedAt, d.project.timezone)} — {m.notes}
                       {m.editLabel ? ` · Diedit oleh ${m.editLabel.editedByName ?? "—"}, ${formatDateTime(m.editLabel.editedAt, d.project.timezone)}` : ""}
                     </li>
                   ))}

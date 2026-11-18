@@ -106,8 +106,10 @@ export default async function PrintDayPage({
         ) : null}
 
         {/* Opening & closing checklists, NOT_OK first (§7.5) */}
-        {(["opening", "closing"] as const).map((phase) => {
-          const block = phase === "opening" ? detail.opening : detail.closing;
+        {(["opening", "closing"] as const).flatMap(phase => {
+          const blocks = phase === "opening" ? detail.openingReports : detail.closingReports;
+          return (blocks.length ? blocks : [null]).map(block => ({phase,block}));
+        }).map(({phase,block}) => {
           if (!block) {
             return (
               <div key={phase}>
@@ -122,11 +124,11 @@ export default async function PrintDayPage({
           });
 
           return (
-            <div key={phase}>
+            <div key={block?.reportId ?? phase}>
               <h2>{phaseLabel(phase)}</h2>
               <div className="block">
                 <div className="muted" style={{ marginBottom: 4 }}>
-                  Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, tz)}
+                  Waktu kejadian: {formatDateTime(block.observedAt, tz)} · Diisi oleh {block.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(block.submittedAt, tz)}
                   {block.editLabel ? ` · Diedit oleh ${block.editLabel.editedByName ?? "—"}, ${formatDateTime(block.editLabel.editedAt, tz)}` : ""}
                   {block.isLate ? " · TERLAMBAT" : ""}
                   {block.latitude
@@ -148,6 +150,7 @@ export default async function PrintDayPage({
                     <div style={{ whiteSpace: "pre-wrap" }}>{block.phaseNote}</div>
                   </div>
                 ) : null}
+                {block.handoverNote ? <div><strong>Handover laporan ini:</strong> {block.handoverNote}</div>:null}
                 {block.notes ? <div style={{ marginBottom: 4 }}>{block.notes}</div> : null}
                 <table>
                   <thead>
@@ -185,7 +188,7 @@ export default async function PrintDayPage({
             {detail.monitoring.map((m) => (
               <div key={m.reportId} className="block">
                 <div className="muted">
-                  Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(m.submittedAt, tz)}
+                  Waktu kejadian: {formatDateTime(m.observedAt, tz)} · Diisi oleh {m.submittedByName ?? "—"} · Waktu pengisian: {formatDateTime(m.submittedAt, tz)}
                   {m.editLabel ? ` · Diedit oleh ${m.editLabel.editedByName ?? "—"}, ${formatDateTime(m.editLabel.editedAt, tz)}` : ""}
                   {m.latitude ? ` · lokasi ${m.latitude},${m.longitude}` : ""}
                 </div>
