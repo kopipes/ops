@@ -36,7 +36,7 @@ import {
 } from "@/server/services/project-checklist";
 import { recordTemplateUsage } from "@/server/services/templates";
 import { projectDays, divisions } from "@/server/db/schema";
-import { canManageProject } from "@/server/permissions";
+import { canCreateProject, canViewProject, canManageProject } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
 export interface ProjectActionState {
@@ -158,6 +158,8 @@ function parseProjectForm(formData: FormData) {
 export async function resolveWizardChecklist(
   formData: FormData,
 ): Promise<{ rows: Awaited<ReturnType<typeof buildChecklistFromTemplates>> }> {
+  const {user}=await requireUserWithoutPasswordChange();
+  if(!canCreateProject(user))throw new ForbiddenError("Kamu tidak berhak membuat checklist project");
   const db = getDb();
   const source = (formData.get("checklistSource") as string) ?? "empty";
   const templateIds = formData.getAll("templateIds").map(String).filter(Boolean);
@@ -166,6 +168,7 @@ export async function resolveWizardChecklist(
   let base: Awaited<ReturnType<typeof buildChecklistFromTemplates>> = [];
   if (source === "template") base = await buildChecklistFromTemplates(db, templateIds);
   else if (source === "project" && sourceProjectId) {
+    if(!canViewProject(user,await loadFacts(db,sourceProjectId)))throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
     base = await buildChecklistFromProject(db, sourceProjectId);
   }
 
@@ -194,6 +197,8 @@ export async function saveProjectAction(
       return { ok: true, projectId: existingId };
     }
 
+    // Authorize and resolve source data before creating any destination rows.
+    const { rows } = await resolveWizardChecklist(formData);
     const { projectId } = await createProject(db, user, parsed.data);
 
     /*
@@ -205,7 +210,6 @@ export async function saveProjectAction(
      * from the SAME hidden cl_* fields, so appending it separately inserted every
      * item twice — which made reports render each checklist line two times.
      */
-    const { rows } = await resolveWizardChecklist(formData);
     const saveCustom = formData.get("saveCustomToMaster") === "on";
 
     if (rows.length > 0) {
