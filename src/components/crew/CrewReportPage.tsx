@@ -39,15 +39,10 @@ export async function CrewReportPage({
   if (!ctx) notFound();
 
   const history = await listPhaseReports(db, ctx.day.id, phase);
-  // §13.1: a reviewed day is locked for everyone.
-  const reviewed = ctx.reviewedAt !== null;
-  const readOnly = !ctx.canSubmit || reviewed;
+  const readOnly = !ctx.canSubmit;
 
   let readOnlyReason: string | undefined;
-  if (reviewed) {
-    readOnlyReason = `Hari ini sudah direview oleh ${ctx.reviewedByName ?? "reviewer"}. Laporan tidak bisa diubah (§13.1).`;
-
-  } else if (!ctx.canSubmit) {
+  if (!ctx.canSubmit) {
     readOnlyReason =
       phase === "monitoring"
         ? "Kamu bukan member project ini."

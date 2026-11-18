@@ -55,13 +55,12 @@ export const isMember = (u: ActingUser, p: ProjectFacts) => p.memberIds.includes
 export const isLead = (u: ActingUser, p: ProjectFacts) => p.leadIds.includes(u.id);
 
 /**
- * §2.2: a user may SEE a project if admin/corporate, or a member,
- * or one of their divisions belongs to the project's divisions.
+ * Admin/Corporate see all projects; every other role needs active membership.
  */
 export function canViewProject(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isGlobalViewer(u)) return true;
-  return isMember(u, p) || sharesDivisionWithProject(u, p);
+  return isMember(u, p);
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +71,8 @@ export function canViewProject(u: ActingUser, p: ProjectFacts): boolean {
 export function canManageProject(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u)) return true;
-  // Note: "owner division" only — an additional division grants visibility,
-  // not management rights.
-  return isManager(u) && u.divisionIds.includes(p.ownerDivisionId);
+  // Management requires active membership and an owner-division match.
+  return isMember(u, p) && isManager(u) && u.divisionIds.includes(p.ownerDivisionId);
 }
 
 /** §2.3: create project — admin, or manager (scoped to their division at creation time). */
@@ -92,7 +90,7 @@ export const canAssignMembers = canManageProject;
 
 /** Manager of the project's division (any division match counts for filling reports). */
 export function isManagerOfProjectDivision(u: ActingUser, p: ProjectFacts): boolean {
-  return isManager(u) && sharesDivisionWithProject(u, p);
+  return isMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
 }
 
 /**
@@ -119,7 +117,7 @@ export function canSubmitOpeningClosing(
   if (!u.isActive) return false;
   if (isAdmin(u)) return true;
   if (isManagerOfProjectDivision(u, p)) return true;
-  if (assignedUserId && u.id === assignedUserId) return true;
+  if (assignedUserId && u.id === assignedUserId && isMember(u, p)) return true;
   return isLead(u, p);
 }
 
@@ -174,7 +172,7 @@ export function canSetIssueStatus(
 export function canReviewDay(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u) || isCorporate(u)) return true;
-  return sharesDivisionWithProject(u, p) && isManager(u);
+  return isManagerOfProjectDivision(u, p);
 }
 
 /**
@@ -185,17 +183,17 @@ export const canUnreviewDay = canReviewDay;
 export function canExportPdf(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u) || isCorporate(u)) return true;
-  return isManager(u) && sharesDivisionWithProject(u, p);
+  return isMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
 }
 
 /**
  * §2.3: report visibility. Crew see only their own projects;
- * managers their division; admin/corporate everything.
+ * managers their assigned projects; Admin/Corporate everything.
  */
 export function canViewReport(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isGlobalViewer(u)) return true;
-  if (isManager(u)) return sharesDivisionWithProject(u, p);
+  if (isManager(u)) return isMember(u, p);
   return isMember(u, p);
 }
 
@@ -211,30 +209,22 @@ export interface ReportEditFacts {
   dayReviewedAt: number | null;
   /** project_days.date as YYYY-MM-DD. */
   dayDate: string;
-  /** projects.timezone — the H+1 deadline is computed in this zone, never the server's. */
+  /** Project timezone for report display; editing has no time limit. */
   timezone: string;
 }
 
-/** A day may be edited until it is reviewed, or until H+1 12:00 in project time. */
+/** Review and elapsed time never lock reports; deleted reports remain immutable. */
 export function isReportEditable(
   now: number,
   facts: ReportEditFacts,
   editDeadline: (dayDate: string, timezone: string) => number,
 ): boolean {
   if (facts.deletedAt !== null) return false;
-  if (facts.dayReviewedAt !== null) return false; // review locks the whole day
-  return now < editDeadline(facts.dayDate, facts.timezone);
+  return true;
 }
 
-/**
- * §13.1: the author may edit within the window; manager/admin may edit any time
- * (audited in both cases).
- *
- * A review locks the whole day for EVERYONE ("satu kali review menutup edit
- * untuk semua laporan"), so the lock is checked before the manager/admin
- * bypass. Reopening is done explicitly with un-review, which clears
- * `reviewed_at` and restores the normal window.
- */
+/** Authors may edit their own visible reports at any time; scoped managers and
+ * admins may also edit. Every change is recorded as an immutable revision. */
 export function canEditReport(
   u: ActingUser,
   p: ProjectFacts,
@@ -244,7 +234,7 @@ export function canEditReport(
 ): boolean {
   if (!u.isActive) return false;
   if (facts.deletedAt !== null) return false;
-  if (facts.dayReviewedAt !== null) return false; // review locks the day for everyone
+  if (!canViewProject(u, p)) return false;
   if (isAdmin(u)) return true;
   if (isManagerOfProjectDivision(u, p)) return true;
   if (facts.submittedBy !== u.id) return false;

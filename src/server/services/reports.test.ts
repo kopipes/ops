@@ -138,6 +138,7 @@ async function setup() {
     .map((c) => ({ id: c.id, label: c.label, phase: c.phase }));
 
   await addMember(db, admin, projectId, "u-lead", "lead");
+  await addMember(db, admin, projectId, "u-mgr", "crew");
   await addMember(db, admin, projectId, "u-crew", "crew");
 }
 
@@ -319,11 +320,11 @@ describe("submitReport permissions (§4.6)", () => {
 });
 
 describe("submitReport multiple reports per phase", () => {
-  it.each(["opening","monitoring","closing"] as const)("rejects a new %s after the day is reviewed", async phase => {
+  it.each(["opening","monitoring","closing"] as const)("allows a new %s after the day is reviewed", async phase => {
     sqlite.prepare('update project_days set reviewed_at=? where id=?').run(Date.now(),dayId);
-    const result=await submitReport(db,sqlite,mgr,baseInput({phase,results:[],notes:"New report"}));
-    expect(result).toMatchObject({ok:false,reason:"forbidden"});
-    expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:0});
+    const result=await submitReport(db,sqlite,mgr,baseInput({phase,...(phase!=="opening"?{results:[]}:{}),notes:"New report",uploaderId:mgr.id}));
+    expect(result).toMatchObject({ok:true});
+    expect(sqlite.prepare('select count(*) as n from reports').get()).toEqual({n:1});
   });
 
   it("allows a second opening", async () => {

@@ -243,8 +243,10 @@ export async function createProject(
     await db.insert(projectDivisions).values({ projectId: id, divisionId }).onConflictDoNothing();
   }
 
-  // Members: the creator's own assignment is not implied — §6.1 no.4 is explicit.
-  for (const m of input.members) {
+  // A manager who creates a project remains explicitly involved in it.
+  const members = isManager(user) && !input.members.some(m => m.userId === user.id)
+    ? [...input.members, { userId: user.id, roleInProject: "lead" as const }] : input.members;
+  for (const m of members) {
     await db
       .insert(projectMembers)
       .values({

@@ -78,6 +78,7 @@ async function setupReport() {
   itemIds = items.map((i) => i.id);
 
   await addMember(db, admin, projectId, "u-lead", "lead");
+  await addMember(db, admin, projectId, "u-mgr", "crew");
   await addMember(db, admin, projectId, "u-crew", "crew");
 
   const res = await submitReport(db, sqlite, lead, {
@@ -187,11 +188,11 @@ describe("getEditableReport", () => {
     expect(loaded?.canEdit).toBe(true);
   });
 
-  it("blocks editing once the day is reviewed (§13.1)", async () => {
+  it("allows editing after the day is reviewed", async () => {
     await markDayReviewed(db, mgr, dayId);
     const loaded = await getEditableReport(db, lead, reportId);
-    expect(loaded?.canEdit).toBe(false);
-    expect(loaded?.editBlockedReason).toMatch(/direview/);
+    expect(loaded?.canEdit).toBe(true);
+    expect(loaded?.editBlockedReason).toBeNull();
   });
 
   it("returns null for a report that does not exist", async () => {
@@ -279,7 +280,7 @@ describe("applyReportEdit (§9.5 no.4)", () => {
     ).rejects.toThrow(/Tidak ada perubahan/);
   });
 
-  it("refuses to edit a reviewed day", async () => {
+  it("edits a reviewed day with history", async () => {
     await markDayReviewed(db, mgr, dayId);
     await expect(
       applyReportEdit(db, sqlite, lead, reportId, {
@@ -289,7 +290,7 @@ describe("applyReportEdit (§9.5 no.4)", () => {
           { projectChecklistItemId: itemIds[1], result: "ok", note: null, photoIds: [] },
         ],
       }),
-    ).rejects.toThrow(/direview/);
+    ).resolves.toBeUndefined();
   });
 
   it("refuses an edit by an unrelated crew member", async () => {

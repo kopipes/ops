@@ -31,7 +31,7 @@ export async function editReportAction(
       projectChecklistItemId: itemId,
       result: value as "ok" | "not_ok" | "na",
       note: note === "" ? null : note,
-      photoIds: [],
+      photoIds:formData.getAll(`photo_${itemId}`).filter((id):id is string=>typeof id==="string"&&id!==""),
     });
   }
 
@@ -43,6 +43,7 @@ export async function editReportAction(
     if(!loaded)return {error:"Laporan tidak ditemukan"};
     if(selectedTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime))return {error:"Jam kejadian tidak valid"};
     await applyReportEdit(getDb(), getRawDb(), session.user, reportId, {
+      expectedUpdatedAt:formData.has("expectedUpdatedAt")?Number(formData.get("expectedUpdatedAt")):undefined,
       notes: notesRaw === "" ? null : notesRaw,
       observedAt:selectedTime?zonedToUtc(loaded.report.dayDate,selectedTime,loaded.report.timezone):undefined,
       handoverNote:formData.has("handoverNote")?String(formData.get("handoverNote")??"").trim()||null:undefined,

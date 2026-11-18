@@ -10,9 +10,10 @@
  */
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   auditLogs,
+  checkResultReviews,
   dayComments,
   divisions,
   issues,
@@ -28,6 +29,7 @@ import {
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
 import {
+  canEditReport,
   canReviewDay,
   canUnreviewDay,
   canViewProject,
@@ -39,6 +41,9 @@ import { getGlobalSettings, isWindowEnabled } from "./app-settings";
 import { editDeadline, toLocalDate } from "@/lib/datetime";
 import { isReportEditable } from "@/server/permissions";
 
+import {currentProjectAccess} from "./project-access";
+import {pointContentHash, type PointReview} from "./checklist-reviews";
+
 type DB = BetterSQLite3Database<typeof schema>;
 
 export type Phase = "opening" | "monitoring" | "closing";
@@ -47,41 +52,27 @@ export type Phase = "opening" | "monitoring" | "closing";
 // Review (§7.2 no.7, §13.1)
 // ---------------------------------------------------------------------------
 
-export async function markDayReviewed(
-  db: DB,
-  user: ActingUser,
-  projectDayId: string,
-): Promise<void> {
-  const day = await db.select().from(projectDays).where(eq(projectDays.id, projectDayId)).get();
-  if (!day) throw new ValidationError("Hari project tidak ditemukan");
-
-  const facts = await loadFacts(db, day.projectId);
-  if (!canReviewDay(user, facts)) {
-    throw new ForbiddenError("Kamu tidak berhak mereview hari ini");
-  }
-  if (day.reviewedAt) return; // idempotent
-
-  const now = Date.now();
-  await db
-    .update(projectDays)
-    .set({ reviewedAt: now, reviewedBy: user.id, updatedAt: now })
-    .where(eq(projectDays.id, projectDayId));
-
-  await db.insert(auditLogs).values({
-    id: randomUUID(),
-    userId: user.id,
-    action: "day.reviewed",
-    entityType: "project_day",
-    entityId: projectDayId,
-    metaJson: JSON.stringify({ projectId: day.projectId, date: day.date }),
-    ip: null,
-    createdAt: now,
+export function dayReviewVersion(rows:{id:string;updatedAt:number}[]) {
+  return createHash("sha256").update(JSON.stringify([...rows].sort((a,b)=>a.id.localeCompare(b.id)).map(r=>[r.id,r.updatedAt]))).digest("hex");
+}
+export async function markDayReviewed(db:DB,actor:ActingUser,projectDayId:string,expectedVersion?:string):Promise<void> {
+  db.transaction(tx=>{
+    const day=tx.select().from(projectDays).where(eq(projectDays.id,projectDayId)).get();
+    if(!day)throw new ValidationError("Hari project tidak ditemukan");
+    const {user,facts}=currentProjectAccess(tx,actor,day.projectId);
+    if(!canReviewDay(user,facts))throw new ForbiddenError("Kamu tidak berhak mereview hari ini");
+    const current=tx.select({id:reports.id,updatedAt:reports.updatedAt}).from(reports)
+      .where(and(eq(reports.projectDayId,day.id),isNull(reports.deletedAt),eq(reports.status,"submitted"))).all();
+    if(expectedVersion!==undefined && expectedVersion!==dayReviewVersion(current))throw new ValidationError("Laporan berubah sejak halaman dibuka. Periksa isi terbaru sebelum mereview.");
+    const now=Math.max(Date.now(),...current.map(r=>r.updatedAt));
+    tx.update(projectDays).set({reviewedAt:now,reviewedBy:user.id,updatedAt:now}).where(eq(projectDays.id,day.id)).run();
+    tx.insert(auditLogs).values({id:randomUUID(),userId:user.id,action:"day.reviewed",entityType:"project_day",entityId:day.id,metaJson:JSON.stringify({projectId:day.projectId,date:day.date,version:dayReviewVersion(current)}),createdAt:now}).run();
   });
 }
 
 /**
  * Un-review (§13.1, Q14 default: allowed, audited, reason recorded).
- * Clearing `reviewed_at` reopens the report edit window.
+ * Review is a marker only; report editing follows its normal author permissions.
  */
 export async function unmarkDayReviewed(
   db: DB,
@@ -168,6 +159,7 @@ export interface DailySummaryRow {
   /** All non-closed issues for the project as of this day. */
   issuesOpen: number;
   hasCriticalOpen: boolean;
+  changedSinceReview: boolean;
   reviewedAt: number | null;
   reviewedByName: string | null;
   photoCount: number;
@@ -247,6 +239,7 @@ export async function getDailySummary(
       id: reports.id,
       projectDayId: reports.projectDayId,
       phase: reports.phase,
+      updatedAt: reports.updatedAt,
       submittedAt: reports.submittedAt,
       observedAt: reports.observedAt,
       isLate: reports.isLate,
@@ -364,6 +357,7 @@ export async function getDailySummary(
       issuesNew: dayIssues.length,
       issuesOpen: openIssues.length,
       hasCriticalOpen,
+      changedSinceReview: day.reviewedAt !== null && dayReports.some(r=>r.updatedAt>day.reviewedAt!),
       reviewedAt: day.reviewedAt,
       reviewedByName: day.reviewedBy ? (reviewerName.get(day.reviewedBy) ?? null) : null,
       photoCount: photoRows.filter((p) => p.projectDayId === day.id).length,
@@ -380,7 +374,7 @@ export async function getDailySummary(
   } else if (filters.status === "critical") {
     filtered = filtered.filter((r) => r.hasCriticalOpen);
   } else if (filters.status === "unreviewed") {
-    filtered = filtered.filter((r) => r.reviewedAt === null);
+    filtered = filtered.filter((r) => r.reviewedAt === null || r.changedSinceReview);
   }
 
   return filtered.sort((a, b) => (a.date === b.date ? a.projectName.localeCompare(b.projectName) : b.date.localeCompare(a.date)));
@@ -393,11 +387,13 @@ export async function getDailySummary(
 export interface DayDetail {
   project: { id: string; name: string; code: string; venue: string; client: string | null; timezone: string };
   day: {
+    reviewVersion:string;
     id: string;
     date: string;
     dayType: string;
     handoverNote: string | null;
-    reviewedAt: number | null;
+    changedSinceReview: boolean;
+  reviewedAt: number | null;
     reviewedByName: string | null;
     assignedUserId: string | null;
   };
@@ -425,6 +421,7 @@ export interface DayDetail {
 }
 
 export interface ReportBlock {
+  canEdit:boolean;
   reportId: string;
   handoverNote: string | null;
   observedAt: number;
@@ -447,6 +444,9 @@ export interface ReportBlock {
     categoryName: string;
     result: "ok" | "not_ok" | "na";
     note: string | null;
+    photoIds: string[];
+    contentHash: string;
+    reviews: PointReview[];
   }[];
   photos: GalleryPhoto[];
 }
@@ -620,6 +620,12 @@ export async function getDayDetail(
     }
   }
 
+  const pointReviews = results.length ? await db.select({id:checkResultReviews.id,checkResultId:checkResultReviews.checkResultId,
+    verdict:checkResultReviews.verdict,action:checkResultReviews.action,note:checkResultReviews.note,contentHash:checkResultReviews.contentHash,
+    createdAt:checkResultReviews.createdAt,authorName:users.name}).from(checkResultReviews)
+    .innerJoin(users,eq(users.id,checkResultReviews.userId)).where(inArray(checkResultReviews.checkResultId,results.map(r=>r.id)))
+    .orderBy(desc(checkResultReviews.createdAt),desc(checkResultReviews.id)) : [];
+
   const buildBlock = (report: typeof dayReports[number]): ReportBlock => {
     const phase = report.phase;
     const blockResults = results
@@ -631,6 +637,7 @@ export async function getDayDetail(
       );
 
     return {
+      canEdit:canEditReport(user,facts,{submittedBy:report.submittedBy,status:report.status,deletedAt:report.deletedAt,dayReviewedAt:day.reviewedAt,dayDate:day.date,timezone:project.timezone},Date.now(),editDeadline),
       reportId: report.id,
       observedAt: report.observedAt,
       phase,
@@ -650,8 +657,11 @@ export async function getDayDetail(
         categoryName: r.categoryName,
         result: r.result as "ok" | "not_ok" | "na",
         note: r.note,
+        photoIds:dayPhotos.filter(p=>p.ownerType==="check_result"&&p.ownerId===r.id).sort((a,b)=>b.createdAt-a.createdAt).map(p=>p.id),
+        contentHash:pointContentHash(r.result,r.note,dayPhotos.filter(p=>p.ownerType==="check_result"&&p.ownerId===r.id).map(p=>p.id)),
+        reviews:pointReviews.filter(review=>review.checkResultId===r.id),
       })),
-      photos: gallery.filter((p) => p.reportId === report.id),
+      photos: gallery.filter((p) => p.reportId === report.id && dayPhotos.some(raw=>raw.id===p.id&&raw.ownerType==="report")),
     };
   };
 
@@ -762,10 +772,12 @@ export async function getDayDetail(
       timezone: project.timezone,
     },
     day: {
+      reviewVersion:dayReviewVersion(dayReports),
       id: day.id,
       date: day.date,
       dayType: day.dayType,
       handoverNote: day.handoverNote,
+      changedSinceReview: day.reviewedAt !== null && dayReports.some(r=>r.updatedAt>day.reviewedAt!),
       reviewedAt: day.reviewedAt,
       reviewedByName: reviewer?.name ?? null,
       assignedUserId: day.assignedUserId,

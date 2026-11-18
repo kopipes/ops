@@ -34,6 +34,8 @@ import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
 import { getGlobalSettings, isWindowEnabled, type GlobalSettings } from "./app-settings";
 
+import {currentProjectAccess} from "./project-access";
+
 type DB = BetterSQLite3Database<typeof schema>;
 
 export type Phase = "opening" | "monitoring" | "closing";
@@ -164,7 +166,7 @@ export async function loadSubmitContext(db: DB, input: SubmitInput) {
  * Submits a report atomically.
  *
  * A unique client_submission_id protects double-tap/retries. Independent reports
- * are allowed in every phase; a reviewed day rejects new submissions.
+ * are allowed in every phase, including reviewed days.
  */
 export async function submitReport(
   db: DB,
@@ -197,7 +199,7 @@ export async function submitReport(
     };
   }
 
-  if (ctx.day.reviewedAt !== null) return {ok:false, reason:"forbidden", message:"Hari ini sudah direview. Manager atau Admin perlu membatalkan review sebelum menambah laporan."};
+
 
   if(!Number.isFinite(input.observedAt)||input.observedAt<=0||toLocalDate(input.observedAt,ctx.project.timezone)!==ctx.day.date)return {ok:false,reason:"validation",message:"Waktu kejadian harus berada pada tanggal laporan"};
   const photoIds=[...input.photoIds,...input.results.flatMap(r=>r.photoIds)];
@@ -241,7 +243,10 @@ export async function submitReport(
   // ---------------------------------------------------------------------
   const tx = raw.transaction(() => {
     const freshDay=raw.prepare('select reviewed_at from project_days where id=?').get(input.projectDayId) as {reviewed_at:number|null}|undefined;
-    if(!freshDay || freshDay.reviewed_at !== null) throw new ForbiddenError("Hari sudah direview atau tidak ditemukan");
+    if(!freshDay) throw new ForbiddenError("Hari tidak ditemukan");
+    const current=currentProjectAccess(db,user,input.projectId);
+    const assignment=raw.prepare("select assigned_user_id from project_days where id=?").get(input.projectDayId) as {assigned_user_id:string|null};
+    if(!canSubmitPhase(current.user,current.facts,input.phase,assignment.assigned_user_id))throw new ForbiddenError("Akses project sudah berubah");
     raw
       .prepare(
         `insert into reports (id, project_id, project_day_id, phase, submitted_by,
@@ -269,7 +274,7 @@ export async function submitReport(
         input.longitude ?? null,
         input.locationAccuracyM ?? null,
         now,
-        now,
+        Math.max(now,(freshDay.reviewed_at??0)+1),
       );
 
     const insertResult = raw.prepare(

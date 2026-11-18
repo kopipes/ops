@@ -107,11 +107,12 @@ describe("visibleProjectIds (§11.7)", () => {
     );
     // p-evt matches via owner division, p-ops via owner division, p-cre via both
     // owner division and the additional project_divisions row.
-    expect(ids.sort()).toEqual(["p-cre", "p-evt", "p-ops"]);
+    expect(ids).toEqual([]);
     expect(new Set(ids).size).toBe(ids.length); // no duplicates
   });
 
   it("hides archived projects unless explicitly requested", async () => {
+    sqlite.prepare("insert into project_members (project_id,user_id,role_in_project,is_active,created_at) values (?,?,?,1,?)").run("p-arch","u-multi","crew",now);
     const u = asUser("u-multi", "user", ["d-evt"]);
     expect(await visibleProjectIds(db, u)).not.toContain("p-arch");
     expect(

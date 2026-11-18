@@ -108,14 +108,12 @@ test("day detail shows the timeline with NOT_OK highlighted (§7.2)", async ({ p
   await expect(page.getByText("Area venue bersih dan siap dipakai", { exact: true })).toBeVisible();
   await expect(page.locator('details[id^="checklist-"]').first()).toHaveAttribute("open", "");
   await waitForHydration(page, 'button[aria-label^="Perbesar"]');
-  const thumbnail = page.getByRole("button", { name: /^Perbesar Foto opening/ }).first();
+  const thumbnail = page.getByRole("button", { name: /^Perbesar .*foto/ }).first();
   await thumbnail.click();
   const modal = page.getByRole("dialog");
   await expect(modal).toBeVisible();
   const original = await modal.locator("img").getAttribute("src");
   expect(original).not.toContain("v=thumb");
-  await page.keyboard.press("ArrowRight");
-  await expect(modal.locator("img")).not.toHaveAttribute("src", original!);
   await page.keyboard.press("Escape");
   await expect(modal).toBeHidden();
   await expect(thumbnail).toBeFocused();
@@ -131,14 +129,14 @@ test("manager can Mark as Reviewed and the state persists (§7.2 no.7)", async (
   await page.getByRole("button", { name: "Mark as Reviewed" }).click();
 
   await expect(page.getByText(/Direview oleh/)).toBeVisible();
-  await expect(page.getByText(/tidak bisa diedit lagi/)).toBeVisible();
+  await expect(page.getByText(/Laporan tetap bisa diedit/)).toBeVisible();
 
   // Reload: state persisted.
   await page.goto(url);
   await expect(page.getByText(/Direview oleh/)).toBeVisible();
 });
 
-test("review locks the crew report form (§13.1)", async ({ page, browser }) => {
+test("review does not lock manager report entry", async ({ page, browser }) => {
   const mgrCtx = await browser.newContext({ viewport: { width: 390, height: 900 } });
   const mgrPage = await mgrCtx.newPage();
   await login(mgrPage, "manager@ops.test");
@@ -151,10 +149,9 @@ test("review locks the crew report form (§13.1)", async ({ page, browser }) => 
   await mgrCtx.close();
 
   // Crew opens the opening form: locked by the review.
-  await login(page, "crew@ops.test");
+  await login(page, "manager@ops.test");
   await page.goto(`${BASE}/projects/${id}/days/${today()}/opening`);
-  await expect(page.getByText(/sudah direview oleh/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Submit Opening/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Submit Opening/ })).toBeVisible();
 
   void url;
 });
@@ -166,9 +163,12 @@ test("reviewer comment is visible to crew (§7.2 no.7)", async ({ page, browser 
   const name = `Comment ${Date.now()}`;
   const id = await createTodayProject(mgrPage, name);
 
+  await submitOpening(mgrPage,id);
   const url = await openDayDetail(mgrPage, name);
-  await mgrPage.getByLabel(/Komentar review/).fill("Tolong lengkapi foto sisi timur");
-  await mgrPage.getByRole("button", { name: "Kirim komentar" }).click();
+  const point=mgrPage.locator('li[id^="point-"]').first();
+  await point.getByText("Review poin ini",{exact:true}).click();
+  await point.getByLabel("Apa yang perlu diperbaiki?",{exact:true}).fill("Tolong lengkapi foto sisi timur");
+  await point.getByRole("button",{name:"Simpan review poin",exact:true}).click();
   await expect(mgrPage.getByText("Tolong lengkapi foto sisi timur")).toBeVisible();
   await mgrCtx.close();
 

@@ -448,6 +448,29 @@ export const photos = sqliteTable("photos", {
   projectIx: index("photos_project_ix").on(t.projectId, t.createdAt),
 }));
 
+/** Immutable reviewer feedback, separate from the original submitted answer. */
+export const checkResultReviews = sqliteTable("check_result_reviews", {
+  id: text("id").primaryKey(),
+  checkResultId: text("check_result_id").notNull().references(() => reportCheckResults.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  verdict: text("verdict", {enum:["ok","not_ok"]}).notNull(),
+  action: text("action", {enum:["re_check","re_take_photo","others"]}),
+  note: text("note"),
+  contentHash: text("content_hash").notNull(),
+  createdAt,
+}, t => ({ resultIx:index("check_result_reviews_result_ix").on(t.checkResultId,t.createdAt) }));
+
+export const reviewNotifications = sqliteTable("review_notifications", {
+  id: text("id").primaryKey(),
+  recipientId: text("recipient_id").notNull().references(() => users.id),
+  reviewId: text("review_id").notNull().references(() => checkResultReviews.id),
+  readAt: ts("read_at"),
+  createdAt,
+}, t => ({
+  recipientReviewUx:uniqueIndex("review_notifications_recipient_review_ux").on(t.recipientId,t.reviewId),
+  inboxIx:index("review_notifications_inbox_ix").on(t.recipientId,t.readAt,t.createdAt),
+}));
+
 export const dayComments = sqliteTable("day_comments", {
   id: text("id").primaryKey(),
   projectDayId: text("project_day_id").notNull().references(() => projectDays.id),

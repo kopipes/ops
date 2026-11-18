@@ -285,7 +285,7 @@ export default async function PrintDayPage({
         <div className="block">
           {detail.day.reviewedAt ? (
             <span className="reviewed">
-              Direview oleh {detail.day.reviewedByName ?? "—"} ·{" "}
+              {detail.day.changedSinceReview ? "Diubah setelah review · " : ""}Direview oleh {detail.day.reviewedByName ?? "—"} ·{" "}
               {formatDateTime(detail.day.reviewedAt, tz)}
             </span>
           ) : (

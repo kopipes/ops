@@ -33,7 +33,7 @@ const project = (over: Partial<ProjectFacts> = {}): ProjectFacts => ({
   status: "active",
   ownerDivisionId: "d-evt",
   divisionIds: [],
-  memberIds: [],
+  memberIds: ["u-crew"],
   leadIds: [],
   ...over,
 });
@@ -45,17 +45,17 @@ describe("visibility (§2.2)", () => {
     expect(canViewProject(user({ role: "corporate", divisionIds: [] }), p)).toBe(true);
   });
 
-  it("owner division grants visibility", () => {
-    expect(canViewProject(user(), project())).toBe(true);
+  it("owner division alone does not grant visibility", () => {
+    expect(canViewProject(user(), project({memberIds:[]}))).toBe(false);
   });
 
-  it("additional project division grants visibility", () => {
-    const p = project({ ownerDivisionId: "d-other", divisionIds: ["d-evt"] });
-    expect(canViewProject(user(), p)).toBe(true);
+  it("additional project division alone does not grant visibility", () => {
+    const p = project({ ownerDivisionId: "d-other", divisionIds: ["d-evt"],memberIds:[] });
+    expect(canViewProject(user(), p)).toBe(false);
   });
 
   it("unrelated division with no membership cannot see the project", () => {
-    const p = project({ ownerDivisionId: "d-other", divisionIds: [] });
+    const p = project({ ownerDivisionId: "d-other", divisionIds: [],memberIds:[] });
     expect(canViewProject(user({ divisionIds: ["d-evt"] }), p)).toBe(false);
   });
 
@@ -97,7 +97,7 @@ describe("submitting reports (§2.2, §4.6)", () => {
   });
 
   it("monitoring: non-member of the division may not submit", () => {
-    const p = project({ ownerDivisionId: "d-other", divisionIds: [] });
+    const p = project({ ownerDivisionId: "d-other", divisionIds: [],memberIds:[] });
     expect(canSubmitMonitoring(user(), p)).toBe(false);
   });
 
@@ -200,13 +200,13 @@ describe("report edit window (§13.1)", () => {
     expect(isReportEditable(before, facts(), editDeadline)).toBe(true);
   });
 
-  it("author may not edit after the deadline", () => {
-    expect(isReportEditable(deadline + 1, facts(), editDeadline)).toBe(false);
+  it("author may edit without a time limit", () => {
+    expect(isReportEditable(deadline + 1, facts(), editDeadline)).toBe(true);
   });
 
-  it("review closes editing even before the deadline", () => {
+  it("review does not lock editing", () => {
     expect(isReportEditable(deadline - 60_000, facts({ dayReviewedAt: 1 }), editDeadline)).toBe(
-      false,
+      true,
     );
   });
 
@@ -215,7 +215,7 @@ describe("report edit window (§13.1)", () => {
     const p = project();
     expect(canEditReport(user({ role: "admin" }), p, facts(), after, editDeadline)).toBe(true);
     expect(canEditReport(user({ role: "manager" }), p, facts(), after, editDeadline)).toBe(true);
-    expect(canEditReport(user(), p, facts(), after, editDeadline)).toBe(false);
+    expect(canEditReport(user(), p, facts(), after, editDeadline)).toBe(true);
   });
 
   it("another crew member cannot edit someone else's report", () => {
@@ -232,20 +232,20 @@ describe("report edit window (§13.1)", () => {
 
   // §13.1: "satu kali review menutup edit untuk semua laporan". The manager/admin
   // bypass lifts the H+1 deadline, never the review lock.
-  it("review locks the day for manager and admin too, until un-reviewed", () => {
+  it("reviewed reports remain editable for authorized users", () => {
     const before = deadline - 60_000;
     const reviewed = facts({ dayReviewedAt: 1 });
     const p = project();
-    expect(canEditReport(user({ role: "admin" }), p, reviewed, before, editDeadline)).toBe(false);
-    expect(canEditReport(user({ role: "manager" }), p, reviewed, before, editDeadline)).toBe(false);
+    expect(canEditReport(user({ role: "admin" }), p, reviewed, before, editDeadline)).toBe(true);
+    expect(canEditReport(user({ role: "manager" }), p, reviewed, before, editDeadline)).toBe(true);
     // Un-review (reviewed_at cleared) reopens the window as before.
     expect(canEditReport(user({ role: "manager" }), p, facts(), before, editDeadline)).toBe(true);
   });
 
-  it("review also locks a draft, for everyone", () => {
+  it("review does not lock a draft", () => {
     const before = deadline - 60_000;
     const reviewedDraft = facts({ status: "draft", dayReviewedAt: 1 });
-    expect(canEditReport(user(), project(), reviewedDraft, before, editDeadline)).toBe(false);
+    expect(canEditReport(user(), project(), reviewedDraft, before, editDeadline)).toBe(true);
   });
 });
 

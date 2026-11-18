@@ -44,7 +44,7 @@ export interface DayPageContext {
   carryOverIssues: { id: string; code: string; title: string; severity: string }[];
   handoverFromYesterday: string | null;
   monitoringCount: number;
-  /** §13.1: a reviewed day locks report editing. */
+  /** Review marker is informative; it never locks reporting. */
   reviewedAt: number | null;
   reviewedByName: string | null;
 }
@@ -115,7 +115,7 @@ export async function loadDayPageContext(
   // §4.5 / §4.3 no.5: issues carried over into this day (single implementation).
   const openIssues = await listCarryOverIssues(db, opts.projectId, day.date);
 
-  // §13.1: review state gates editing.
+  // Review attribution for display.
   const reviewer = day.reviewedBy
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, day.reviewedBy)).get()
     : null;

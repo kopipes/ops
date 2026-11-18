@@ -6,8 +6,7 @@ import { getDb } from "@/server/db";
 import { getDayDetail, type GalleryPhoto, type ReportBlock } from "@/server/services/reports-review";
 import { eq } from "drizzle-orm";
 import { projectDays } from "@/server/db/schema";
-import { dayCommentAction, markReviewedAction, unmarkReviewedAction } from "@/app/review-actions";
-import { DayCommentForm } from "@/components/review/DayCommentForm";
+import { markReviewedAction, unmarkReviewedAction } from "@/app/review-actions";
 import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
 import { exportDailyPdfAction } from "@/app/pdf-actions";
 import { formatReportTimestamp } from "@/lib/datetime";
@@ -37,12 +36,14 @@ function ReportSection({
   tz,
   projectId,
   dayId,
+  canReview = false,
 }: {
   title: string;
   block: ReportBlock | null;
   tz: string;
   projectId: string;
   dayId: string;
+  canReview?: boolean;
 }) {
   if (!block) {
     return (
@@ -121,7 +122,7 @@ function ReportSection({
         {block.handoverNote ? <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Handover laporan ini:</strong> {block.handoverNote}</p> : null}
         {block.notes ? <p className="mt-1 text-sm whitespace-pre-wrap">{block.notes}</p> : null}
 
-        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} issueContext={{projectId,dayId,phase:block.phase}} />
+        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} canReview={canReview} canEdit={block.canEdit} timezone={tz} issueContext={{projectId,dayId,phase:block.phase}} />
 
         <PhotoGrid photos={block.photos} />
       </div>
@@ -129,9 +130,10 @@ function ReportSection({
   );
 }
 
-export default async function DayDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DayDetailPage({ params,searchParams }: { params: Promise<{ id: string }>;searchParams:Promise<{reviewError?:string}> }) {
   const session = await requireUser();
   const { id } = await params;
+  const {reviewError}=await searchParams;
   const db = getDb();
 
   // The route param is the project_day id; resolve its project for the loader.
@@ -216,10 +218,11 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
         </div>
       ) : null}
 
+      {reviewError?<p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Laporan baru berubah. Periksa isi terbaru, lalu review ulang.</p>:null}
       <div id="report-checklists" className="scroll-mt-5" />
-      {detail.openingReports.length ? detail.openingReports.map((block,index)=><ReportSection key={block.reportId} title={`Opening ${index+1} dari ${detail.openingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>) : <ReportSection title="Opening" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>}
-      {detail.monitoring.map((block,index)=><ReportSection key={block.reportId} title={`Monitoring ${index+1} dari ${detail.monitoring.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>)}
-      {detail.closingReports.length ? detail.closingReports.map((block,index)=><ReportSection key={block.reportId} title={`Closing ${index+1} dari ${detail.closingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>) : <ReportSection title="Closing" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id}/>}
+      {detail.openingReports.length ? detail.openingReports.map((block,index)=><ReportSection key={block.reportId} title={`Opening ${index+1} dari ${detail.openingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>) : <ReportSection title="Opening" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>}
+      {detail.monitoring.map((block,index)=><ReportSection key={block.reportId} title={`Monitoring ${index+1} dari ${detail.monitoring.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>)}
+      {detail.closingReports.length ? detail.closingReports.map((block,index)=><ReportSection key={block.reportId} title={`Closing ${index+1} dari ${detail.closingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>) : <ReportSection title="Closing" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>}
 
       {detail.day.handoverNote ? (
         <div
@@ -331,8 +334,10 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
                 {new Date(detail.day.reviewedAt).toLocaleString("id-ID")}
               </p>
               <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-                Setelah direview, laporan tidak bisa diedit lagi (§13.1).
+                Laporan tetap bisa diedit sesuai hak akses. Riwayat perubahan tetap tercatat.
               </p>
+              {detail.day.changedSinceReview ? <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800">Ada perubahan setelah review</p> : null}
+              {detail.canReview && detail.day.changedSinceReview ? <form action={markReviewedAction} className="mt-2"><input type="hidden" name="projectDayId" value={detail.day.id}/><input type="hidden" name="reviewVersion" value={detail.day.reviewVersion}/><button className="btn-primary text-xs">Review ulang</button></form> : null}
               {detail.canUnreview ? (
                 <form action={unmarkReviewedAction} className="mt-2 flex flex-col gap-2">
                   <input type="hidden" name="projectDayId" value={detail.day.id} />
@@ -356,7 +361,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
             </>
           ) : detail.canReview ? (
             <form action={markReviewedAction}>
-              <input type="hidden" name="projectDayId" value={detail.day.id} />
+              <input type="hidden" name="projectDayId" value={detail.day.id} /><input type="hidden" name="reviewVersion" value={detail.day.reviewVersion}/>
               <button
                 type="submit"
                 className="min-h-tap w-full rounded-lg px-4 py-3 text-base font-medium text-white"
@@ -371,6 +376,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
             </p>
           )}
 
+          {detail.comments.length > 0 ? <p className="mt-4 text-xs font-medium text-[var(--muted)]">Riwayat komentar umum sebelumnya</p> : null}
           {detail.comments.length > 0 ? (
             <ul className="mt-3 flex flex-col gap-1">
               {detail.comments.map((c) => (
@@ -388,9 +394,7 @@ export default async function DayDetailPage({ params }: { params: Promise<{ id: 
             </ul>
           ) : null}
 
-          {detail.canReview ? (
-            <DayCommentForm projectDayId={detail.day.id} action={dayCommentAction} />
-          ) : null}
+          <p className="mt-3 text-xs text-[var(--muted)]">Berikan review langsung pada poin checklist yang perlu diperiksa.</p>
         </div>
       </section>
       </aside>

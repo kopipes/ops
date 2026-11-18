@@ -73,7 +73,7 @@ export default async function PrintRecapPage({
   }
 
   const totalPhotos = details.reduce((n, d) => n + d.summary.photoCount, 0);
-  const reviewedCount = details.filter((d) => d.day.reviewedAt !== null).length;
+  const reviewedCount = details.filter((d) => d.day.reviewedAt !== null && !d.day.changedSinceReview).length;
 
   return (
     <div className="print-root">
@@ -140,7 +140,7 @@ export default async function PrintRecapPage({
               {d.summary.notOkCount} · Monitoring: {d.summary.monitoringCount} · Issue terbuka:{" "}
               {d.summary.issuesOpen} ·{" "}
               {d.day.reviewedAt ? (
-                <span className="reviewed">direview</span>
+                <span className="reviewed">{d.day.changedSinceReview?"diubah setelah review":"direview"}</span>
               ) : (
                 <span className="not-reviewed">belum direview</span>
               )}

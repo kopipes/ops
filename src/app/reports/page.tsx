@@ -114,7 +114,7 @@ export default async function ReportsPage({
       <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard label="Laporan harian" value={rows.length} icon="layers" hint="Sesuai periode dan filter" />
         <MetricCard label="Opening & closing terisi" value={rows.filter(r => r.opening && r.closing).length} icon="check" tone="success" hint="Kedua laporan tersedia" />
-        <MetricCard label="Belum direview" value={rows.filter(r => !r.reviewedAt).length} icon="clock" tone="neutral" hint="Menunggu pemeriksaan" />
+        <MetricCard label="Belum direview" value={rows.filter(r => !r.reviewedAt || r.changedSinceReview).length} icon="clock" tone="neutral" hint="Menunggu pemeriksaan" />
         <MetricCard label="Perlu perhatian" value={rows.filter(r => r.hasCriticalOpen).length} icon="alert" tone="warning" hint="Memiliki issue High / Critical" />
       </div>
 
@@ -224,7 +224,7 @@ export default async function ReportsPage({
         <ul className="flex flex-col gap-2 lg:hidden">
           {rows.map((r) => {
             const project = projectRows.find((p) => p.id === r.projectId);
-            const tone = r.hasCriticalOpen ? "#dc2626" : r.reviewedAt ? "#16a34a" : "var(--border)";
+            const tone = r.hasCriticalOpen ? "#dc2626" : r.changedSinceReview ? "#b45309" : r.reviewedAt ? "#16a34a" : "var(--border)";
             return (
               <li key={`${r.projectId}-${r.date}`}>
                 <div
@@ -244,7 +244,7 @@ export default async function ReportsPage({
                       </p>
                     </div>
                     <span className="shrink-0 text-xs" style={{ color: "var(--muted)" }}>
-                      {r.reviewedAt ? "reviewed" : "belum review"}
+                      {r.changedSinceReview ? "diubah setelah review" : r.reviewedAt ? "reviewed" : "belum review"}
                     </span>
                   </div>
 
@@ -329,7 +329,7 @@ export default async function ReportsPage({
             <tbody>
               {rows.map((r) => {
                 const project = projectRows.find((p) => p.id === r.projectId);
-                const tone = r.hasCriticalOpen ? "#dc2626" : r.reviewedAt ? "#16a34a" : "var(--border)";
+                const tone = r.hasCriticalOpen ? "#dc2626" : r.changedSinceReview ? "#b45309" : r.reviewedAt ? "#16a34a" : "var(--border)";
                 return (
                   <tr
                     key={`${r.projectId}-${r.date}`}
@@ -374,8 +374,8 @@ export default async function ReportsPage({
                       {r.issuesNew} / <Link href={`/issues?projectId=${r.projectId}&open=1`} className="underline underline-offset-2" aria-label={`Lihat ${r.issuesOpen} issue belum ditutup ${r.projectName}`}>{r.issuesOpen}{r.hasCriticalOpen ? " ⚠" : ""} ↗</Link>
                     </td>
                     <td className="px-3 py-1.5 text-right">{r.photoCount}</td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-xs" style={{ color: r.reviewedAt ? "#16a34a" : "var(--muted)" }}>
-                      {r.reviewedAt ? "✓ reviewed" : "belum review"}
+                    <td className="whitespace-nowrap px-3 py-1.5 text-xs" style={{ color: r.changedSinceReview ? "#b45309" : r.reviewedAt ? "#16a34a" : "var(--muted)" }}>
+                      {r.changedSinceReview ? "⚠ diubah setelah review" : r.reviewedAt ? "✓ reviewed" : "belum review"}
                     </td>
                   </tr>
                 );

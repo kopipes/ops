@@ -353,3 +353,23 @@ Waktu pengisian server tetap dicatat terpisah. Edit dilakukan per laporan dengan
 riwayat revisi. Ringkasan checklist memakai jawaban kejadian terakhir per item;
 seluruh laporan tetap muncul dalam detail dan PDF. Tiap closing menyimpan
 handover sendiri, dan kejadian closing terakhir menjadi handover untuk besok.
+
+### Project access and point reviews
+
+Admin and Corporate can view all projects. Manager/Crew visibility requires active
+project membership, including direct report, issue, photo, and PDF access. A new
+Manager-created project enrolls its creator if not already selected.
+
+Review is a marker and does not lock submissions or edits. Authors can edit their
+own visible reports without a deadline; scoped Managers/Admin retain their edit
+permissions. Original submission timestamps are immutable. Each edit records an
+immutable prior version and author/time. A changed reviewed day is marked until
+reviewed again.
+
+Review each submitted checklist point with OK or Not OK and a Re-check, Re-take
+photo, or Others instruction plus note. Feedback is separate from the original
+answer. Photos appear on the matching point, with repair photos appended to
+preserve earlier evidence. Changed points request a fresh review. The report
+author receives an in-app notification linking to the exact point (no self
+notification). Inbox access follows current project membership and read state is
+per recipient. Legacy general comments remain visible as history.

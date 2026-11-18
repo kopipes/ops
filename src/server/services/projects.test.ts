@@ -366,6 +366,7 @@ describe("updateProject date rules (§11.3)", () => {
 
   it("only admin may change the owner division", async () => {
     const { projectId } = await createProject(db, admin, projectInput());
+    await addMember(db,admin,projectId,mgr.id,"crew");
     await expect(
       updateProject(db, mgr, projectId, projectInput({ ownerDivisionId: "d-ops" })),
     ).rejects.toThrow(/Admin/);

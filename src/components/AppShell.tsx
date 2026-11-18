@@ -4,6 +4,9 @@ import { SideNav } from "@/components/SideNav";
 import { currentSession, requireUser } from "@/server/auth/current-user";
 import { BrandMark, Icon } from "@/components/ui/WorkspaceUI";
 import Link from "next/link";
+import {NotificationLink} from "@/components/review/NotificationLink";
+import {getDb} from "@/server/db";
+import {unreadReviewCount} from "@/server/services/checklist-reviews";
 
 /** Icon paths (Feather-style, stroke-based). */
 const ICONS = {
@@ -22,6 +25,7 @@ export async function AppShell({
   contentWidth?: "wide" | "form";
 }) {
   const session = await requireUser();
+  const unread=unreadReviewCount(getDb(),session.user);
 
   // §4.1: a reset account must set a new password before using the app.
   if (session.mustChangePassword) redirect("/me/password");
@@ -53,7 +57,7 @@ export async function AppShell({
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         <header className="workspace-topbar">
           <div className="flex items-center gap-3"><span className="lg:hidden"><BrandMark /></span><div><p className="text-[13px] font-semibold tracking-tight">Provaliant Group</p><p className="text-[11px] text-[var(--muted)]">Operations workspace</p></div></div>
-          <div className="flex items-center gap-5"><p className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><Icon name="shield" size={16} />Workspace internal</p><Link href="/me" aria-label={`Akun ${session.name}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent)]">{session.name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase()}</Link></div>
+          <div className="flex items-center gap-3 sm:gap-5"><NotificationLink initialCount={unread}/><p className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><Icon name="shield" size={16} />Workspace internal</p><Link href="/me" aria-label={`Akun ${session.name}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent)]">{session.name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase()}</Link></div>
         </header>
         <main id="main-content" className={`ops-main ${contentWidth === "form" ? "lg:!max-w-3xl" : ""}`}>
           {children}

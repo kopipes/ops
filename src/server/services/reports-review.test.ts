@@ -84,6 +84,7 @@ async function setupProject(code = "EVT-2026-0001") {
     .orderBy(schema.projectChecklistItems.sortOrder);
 
   await addMember(db, admin, created.projectId, "u-lead", "lead");
+  await addMember(db, admin, created.projectId, "u-mgr", "crew");
   await addMember(db, admin, created.projectId, "u-crew", "crew");
 
   return { projectId: created.projectId, dayIds: days.map((d) => d.id), items: items.map((i) => i.id) };
@@ -161,12 +162,12 @@ describe("markDayReviewed (§7.2 no.7)", () => {
     expect(logs.some((l) => l.action === "day.reviewed")).toBe(true);
   });
 
-  it("is idempotent", async () => {
+  it("refreshes the review timestamp on re-review", async () => {
     await markDayReviewed(db, mgr, dayIds[0]);
     const first = await db.select().from(schema.projectDays).where(eq(schema.projectDays.id, dayIds[0])).get();
     await markDayReviewed(db, mgr, dayIds[0]);
     const second = await db.select().from(schema.projectDays).where(eq(schema.projectDays.id, dayIds[0])).get();
-    expect(second?.reviewedAt).toBe(first?.reviewedAt);
+    expect(second!.reviewedAt!).toBeGreaterThanOrEqual(first!.reviewedAt!);
   });
 
   it("corporate may review (§2.3)", async () => {
@@ -178,6 +179,7 @@ describe("markDayReviewed (§7.2 no.7)", () => {
   });
 
   it("manager from another division may not review", async () => {
+    sqlite.prepare("update user_divisions set division_id='d-ops' where user_id='u-mgr'").run();
     await expect(markDayReviewed(db, { ...mgr, divisionIds: ["d-ops"] }, dayIds[0])).rejects.toThrow();
   });
 
@@ -212,10 +214,10 @@ describe("review locks the report edit window (§13.1)", () => {
     // Fixture day is Nov 2; keep the clock inside its H+1 edit window.
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-03T04:00:00Z"));
   });
-  it("a day becomes non-editable once reviewed", async () => {
+  it("a reviewed day remains editable", async () => {
     expect(await isDayEditable(db, dayIds[0])).toBe(true);
     await markDayReviewed(db, mgr, dayIds[0]);
-    expect(await isDayEditable(db, dayIds[0])).toBe(false);
+    expect(await isDayEditable(db, dayIds[0])).toBe(true);
   });
 
   it("un-reviewing reopens editing (before H+1 12:00)", async () => {
@@ -225,7 +227,7 @@ describe("review locks the report edit window (§13.1)", () => {
     expect(day?.reviewedAt).toBeNull();
     expect(await isDayEditable(db, dayIds[0])).toBe(true);
     vi.mocked(Date.now).mockReturnValue(Date.parse("2026-11-03T05:00:00Z"));
-    expect(await isDayEditable(db, dayIds[0])).toBe(false);
+    expect(await isDayEditable(db, dayIds[0])).toBe(true);
   });
 });
 

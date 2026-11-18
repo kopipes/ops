@@ -34,7 +34,7 @@ export default async function EditReportPage({
   return (
     <AppShell contentWidth="form">
       <header className="mb-4">
-        <Link href="/reports" className="text-xs" style={{ color: "var(--muted)" }}>
+        <Link href={`/reports/day/${report.projectDayId}`} className="text-xs" style={{ color: "var(--muted)" }}>
           ← Report
         </Link>
         <h1 className="mt-1 text-xl font-semibold">Edit Laporan {report.phase}</h1>
@@ -69,6 +69,9 @@ export default async function EditReportPage({
         <EditReportForm
           action={editReportAction}
           reportId={report.id}
+          projectId={report.projectId}
+          projectDayId={report.projectDayId}
+          updatedAt={report.updatedAt}
           notes={report.notes}
           phase={report.phase}
           timezone={report.timezone}

@@ -6,13 +6,12 @@
  * division match leak project membership semantics). Every project-scoped
  * query must go through `visibleProjectIds()`.
  */
-import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   projectDivisions,
   projectMembers,
   projects,
-  userDivisions,
 } from "./db/schema";
 import type * as schema from "./db/schema";
 import type { ActingUser, ProjectFacts } from "./permissions";
@@ -22,21 +21,13 @@ type DB = BetterSQLite3Database<typeof schema>;
 
 /**
  * Predicate: project row is visible to this user.
- * Mirrors §2.2 exactly — admin/corporate see all; otherwise member OR division match.
+ * Admin/Corporate see all; every other role requires active membership.
  */
 export function visibleProjectPredicate(u: ActingUser): SQL | undefined {
-  if (isGlobalViewer(u)) return undefined; // no filter
-  return or(
-    sql`EXISTS (SELECT 1 FROM ${projectMembers} pm
-               WHERE pm.project_id = ${projects.id}
-                 AND pm.user_id = ${u.id}
-                 AND pm.is_active = 1)`,
-    sql`${projects.ownerDivisionId} IN (
-          SELECT ud.division_id FROM ${userDivisions} ud WHERE ud.user_id = ${u.id})`,
-    sql`EXISTS (SELECT 1 FROM ${projectDivisions} pd
-               JOIN ${userDivisions} ud ON ud.division_id = pd.division_id
-               WHERE pd.project_id = ${projects.id} AND ud.user_id = ${u.id})`,
-  );
+  if (u.isActive && isGlobalViewer(u)) return undefined; // no filter
+  if (!u.isActive) return sql`0 = 1`;
+  return sql`EXISTS (SELECT 1 FROM ${projectMembers} pm
+    WHERE pm.project_id = ${projects.id} AND pm.user_id = ${u.id} AND pm.is_active = 1)`;
 }
 
 /**

@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import {PhotoGallery} from "@/components/reports/PhotoGallery";
+import {compressPhoto} from "@/lib/image-compression";
+import { useEffect, useState } from "react";
 import type { EditReportState } from "@/app/edit-actions";
 
+const actionLabels={re_check:"Re-check",re_take_photo:"Re-take photo",others:"Others"};
 export interface EditableResult {
+  review?:{verdict:"ok"|"not_ok";action:keyof typeof actionLabels|null;note:string|null}|null;
+  checkResultId:string;
+  photoIds:string[];
   projectChecklistItemId: string;
   label: string;
   categoryName: string;
@@ -15,6 +21,9 @@ export interface EditableResult {
 
 export function EditReportForm({
   action,
+  projectId,
+  projectDayId,
+  updatedAt,
   reportId,
   notes,
   phaseNote,
@@ -25,6 +34,9 @@ export function EditReportForm({
   results,
 }: {
   action: (prev: EditReportState, formData: FormData) => Promise<EditReportState>;
+  projectId:string;
+  projectDayId:string;
+  updatedAt:number;
   reportId: string;
   notes: string | null;
   phaseNote: string | null;
@@ -34,8 +46,22 @@ export function EditReportForm({
   timezone: string;
   results: EditableResult[];
 }) {
+  const [hydrated,setHydrated]=useState(false);
+  useEffect(()=>setHydrated(true),[]);
   const [state, setState] = useState<EditReportState>({});
   const [pending, setPending] = useState(false);
+  const [uploads,setUploads]=useState<Record<string,string[]>>({});
+  const [uploading,setUploading]=useState(0);
+  const upload=async(itemId:string,files:FileList|null,source:"camera"|"gallery")=>{
+    if(!files)return;setUploading(n=>n+1);setState({});
+    try {for(const file of Array.from(files)) {
+      const compressed=await compressPhoto(file);const data=new FormData();data.set("file",compressed.blob,file.name||"photo.jpg");
+      data.set("projectId",projectId);data.set("projectDayId",projectDayId);data.set("source",source);data.set("clientUploadId",crypto.randomUUID());
+      const response=await fetch("/api/photos",{method:"POST",body:data});const result=await response.json();
+      if(!response.ok)throw new Error(result.error??"Upload gagal");
+      setUploads(prev=>({...prev,[itemId]:[...(prev[itemId]??[]),result.photoId]}));
+    }}catch(err){setState({error:err instanceof Error?err.message:"Upload gagal. Coba lagi."});}finally{setUploading(n=>n-1);}
+  };
   const [answers, setAnswers] = useState<Record<string, { result: string; note: string }>>(() => {
     const init: Record<string, { result: string; note: string }> = {};
     for (const r of results) {
@@ -56,6 +82,7 @@ export function EditReportForm({
    * Navigating on the client with `window.location` also mirrors the crew form.
    */
   const onSubmit = async (formData: FormData) => {
+    if(uploading>0){setState({error:"Tunggu foto selesai diunggah."});return;}
     setPending(true);
     setState({});
     let res: EditReportState;
@@ -76,7 +103,7 @@ export function EditReportForm({
 
   return (
     <form action={onSubmit} className="flex flex-col gap-3">
-      <input type="hidden" name="reportId" value={reportId} />
+      <input type="hidden" name="reportId" value={reportId} /><input type="hidden" name="expectedUpdatedAt" value={updatedAt}/>
       {results.map((r) => (
         <div key={r.projectChecklistItemId}>
           <input type="hidden" name={`r_${r.projectChecklistItemId}`} value={answers[r.projectChecklistItemId]?.result ?? ""} />
@@ -93,6 +120,7 @@ export function EditReportForm({
           return (
             <li
               key={r.projectChecklistItemId}
+              id={`edit-point-${r.checkResultId}`}
               className="rounded-xl border px-3 py-2"
               style={{ borderColor: "var(--border)", background: "var(--surface)" }}
             >
@@ -101,6 +129,7 @@ export function EditReportForm({
                 {r.categoryName}
               </p>
 
+              {r.review?.verdict==="not_ok"?<div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><p className="text-xs font-semibold">Permintaan reviewer{r.review.action?` · ${actionLabels[r.review.action]}`:""}</p><p className="mt-1 whitespace-pre-wrap">{r.review.note}</p></div>:null}
               <div className="mt-2 grid grid-cols-3 gap-1">
                 {(
                   [
@@ -135,17 +164,22 @@ export function EditReportForm({
                 })}
               </div>
 
-              {a?.result === "not_ok" ? (
-                <textarea
+              <textarea
                   aria-label={`Catatan ${r.label}`}
                   value={a.note}
                   onChange={(e) => set(r.projectChecklistItemId, { note: e.target.value })}
                   rows={2}
-                  placeholder="Catatan (wajib)"
+                  placeholder={a?.result==="not_ok"?"Catatan (wajib)":"Catatan perbaikan (opsional)"}
                   className="mt-2 w-full rounded-lg border px-2 py-1 text-sm"
                   style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
                 />
-              ) : null}
+              <PhotoGallery small photos={[...(uploads[r.projectChecklistItemId]??[]),...r.photoIds].map((id,index)=>({id,label:`${r.label} — foto ${index+1}`}))}/>
+              {(uploads[r.projectChecklistItemId]??[]).map(id=><input key={id} type="hidden" name={`photo_${r.projectChecklistItemId}`} value={id}/>)}
+              <p className="mt-2 text-xs text-[var(--muted)]">Tambah foto perbaikan. Foto sebelumnya tetap tersimpan.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <label className="btn-secondary cursor-pointer text-xs">Ambil foto baru<input aria-label={`Ambil foto perbaikan ${r.label}`} type="file" accept="image/*" capture="environment" disabled={!hydrated||pending||uploading>0} className="sr-only" onChange={e=>{void upload(r.projectChecklistItemId,e.target.files,"camera");e.target.value="";}}/></label>
+                <label className="btn-secondary cursor-pointer text-xs">Pilih foto<input aria-label={`Pilih foto perbaikan ${r.label}`} type="file" accept="image/*" multiple disabled={!hydrated||pending||uploading>0} className="sr-only" onChange={e=>{void upload(r.projectChecklistItemId,e.target.files,"gallery");e.target.value="";}}/></label>
+              </div>
             </li>
           );
         })}
@@ -173,11 +207,11 @@ export function EditReportForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={!hydrated||pending||uploading>0}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
         style={{ background: "var(--accent-solid)" }}
       >
-        {pending ? "Menyimpan…" : "Simpan perubahan"}
+        {uploading>0?"Mengunggah foto…":pending ? "Menyimpan…" : "Simpan perubahan"}
       </button>
     </form>
   );

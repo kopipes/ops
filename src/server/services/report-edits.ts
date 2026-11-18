@@ -2,17 +2,17 @@
  * Report editing after submit (§13.1) and its revision history (§9.5 no.4).
  *
  * Rules enforced here:
- * - Only the author (within the window) or a manager/admin may edit.
- * - The window closes when the day is reviewed, or at H+1 12:00 project time.
+ * - Authors, scoped managers, and Admin may edit without a time or review lock.
  * - EVERY edit writes an immutable `report_revisions` snapshot BEFORE the change,
  *   so "Lihat riwayat" can show the previous version and a per-item diff.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import {
   auditLogs,
+  checkResultReviews,
   photos,
   projectChecklistItems,
   projectDays,
@@ -29,9 +29,13 @@ import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
 import { validateResults, type CheckResultInput } from "./reports";
 
+import {currentProjectAccess} from "./project-access";
+
 type DB = BetterSQLite3Database<typeof schema>;
 
 export interface EditableReport {
+  projectId: string;
+  updatedAt: number;
   timezone: string;
   observedAt: number;
   phaseNote: string | null;
@@ -49,6 +53,9 @@ export interface EditableReport {
   submittedBy: string;
   submittedByName: string | null;
   results: {
+    review: {verdict:"ok"|"not_ok";action:"re_check"|"re_take_photo"|"others"|null;note:string|null}|null;
+    checkResultId: string;
+    photoIds: string[];
     projectChecklistItemId: string;
     label: string;
     categoryName: string;
@@ -111,7 +118,8 @@ export async function getEditableReport(
     .get();
 
   const photoOwners=[row.id,...results.map(r=>r.checkResultId)];
-  const attachedPhotos=await db.select({id:photos.id}).from(photos).where(and(inArray(photos.ownerId,photoOwners),eq(photos.projectId,row.projectId)));
+  const attachedPhotos=await db.select({id:photos.id,ownerId:photos.ownerId,ownerType:photos.ownerType}).from(photos).where(and(inArray(photos.ownerId,photoOwners),eq(photos.projectId,row.projectId),isNull(photos.deletedAt))).orderBy(desc(photos.createdAt));
+  const feedback=results.length ? await db.select().from(checkResultReviews).where(inArray(checkResultReviews.checkResultId,results.map(r=>r.checkResultId))).orderBy(desc(checkResultReviews.createdAt),desc(checkResultReviews.id)) : [];
   const lastRevision = revisions[revisions.length - 1];
   const lastEditor = lastRevision?.editedBy
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, lastRevision.editedBy)).get()
@@ -134,19 +142,20 @@ export async function getEditableReport(
 
   let blockedReason: string | null = null;
   if (!editable) {
-    if (day.reviewedAt) blockedReason = "Hari ini sudah direview — laporan tidak bisa diubah (§13.1).";
-    else blockedReason = "Batas waktu edit (H+1 12:00) sudah lewat.";
+    blockedReason = "Kamu tidak berhak mengedit laporan ini.";
   }
 
   return {
     report: {
+      projectId:row.projectId,
+      updatedAt:row.updatedAt,
       timezone: project.timezone,
       observedAt: row.observedAt,
       phaseNote: row.phaseNote,
       handoverNote: row.handoverNote,
       projectDayId: day.id,
       dayDate: day.date,
-      photoIds: attachedPhotos.map(p=>p.id),
+      photoIds: attachedPhotos.filter(p=>p.ownerType==="report"&&p.ownerId===row.id).map(p=>p.id),
 
       id: row.id,
       phase: row.phase,
@@ -158,6 +167,9 @@ export async function getEditableReport(
       submittedBy: row.submittedBy,
       submittedByName: submitter?.name ?? null,
       results: results.map((r) => ({
+        review:feedback.find(review=>review.checkResultId===r.checkResultId)??null,
+        checkResultId:r.checkResultId,
+        photoIds:attachedPhotos.filter(p=>p.ownerType==="check_result"&&p.ownerId===r.checkResultId).map(p=>p.id),
         projectChecklistItemId: r.projectChecklistItemId,
         label: r.label,
         categoryName: r.categoryName,
@@ -184,12 +196,18 @@ export async function applyReportEdit(
   raw: Database.Database,
   user: ActingUser,
   reportId: string,
-  input: { notes: string | null; results: CheckResultInput[]; observedAt?: number; phaseNote?: string | null; handoverNote?: string | null },
+  input: { notes: string | null; results: CheckResultInput[]; expectedUpdatedAt?:number; observedAt?: number; phaseNote?: string | null; handoverNote?: string | null },
 ): Promise<void> {
   const loaded = await getEditableReport(db, user, reportId);
   if (!loaded) throw new ValidationError("Laporan tidak ditemukan");
   if (!loaded.canEdit) throw new ForbiddenError(loaded.editBlockedReason ?? "Tidak bisa mengedit");
 
+  if(input.expectedUpdatedAt!==undefined && input.expectedUpdatedAt!==loaded.report.updatedAt)throw new ValidationError("Laporan baru diubah oleh pengguna lain. Muat ulang sebelum menyimpan.");
+  const addedPhotos=input.results.flatMap(r=>r.photoIds);
+  if(new Set(addedPhotos).size!==addedPhotos.length)throw new ValidationError("Satu foto hanya boleh ditambahkan ke satu poin");
+  for(const id of addedPhotos) {
+    if(!raw.prepare("select id from photos where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").get(id,user.id,user.id,loaded.report.projectId,loaded.report.projectDayId))throw new ValidationError("Foto baru tidak tersedia untuk laporan ini. Unggah ulang foto.");
+  }
   /*
    * Validate answers the same way submit does (§4.3 no.3, §8.1) — with one
    * important difference: the edit form does not re-upload photos, so a
@@ -244,6 +262,7 @@ export async function applyReportEdit(
       label: r.label,
       result: r.result,
       note: r.note,
+      photoIds:r.photoIds,
     })),
   };
 
@@ -255,6 +274,7 @@ export async function applyReportEdit(
   if(observedAt!==snapshot.observedAt)changes.push({projectChecklistItemId:"report",label:"Jam kejadian",field:"observedAt",from:String(snapshot.observedAt),to:String(observedAt)});
   if(handoverNote!==snapshot.handoverNote)changes.push({projectChecklistItemId:"report",label:"Handover",field:"handoverNote",from:snapshot.handoverNote,to:handoverNote});
   if(phaseNote!==snapshot.phaseNote)changes.push({projectChecklistItemId:"report",label:"Isi laporan",field:"phaseNote",from:snapshot.phaseNote,to:phaseNote});
+  for(const r of input.results)if(r.photoIds.length)changes.push({projectChecklistItemId:r.projectChecklistItemId,label:rows.find(row=>row.id===r.projectChecklistItemId)?.label??"Foto",field:"photos",from:null,to:`${r.photoIds.length} foto perbaikan ditambahkan`});
   if (snapshot.notes === input.notes && changes.length === 0) {
     throw new ValidationError("Tidak ada perubahan");
   }
@@ -263,7 +283,11 @@ export async function applyReportEdit(
 
   const tx = raw.transaction(() => {
     const day=raw.prepare('select reviewed_at from project_days where id=?').get(loaded.report.projectDayId) as {reviewed_at:number|null}|undefined;
-    if(!day||day.reviewed_at!==null)throw new ForbiddenError("Hari sudah direview. Batalkan review sebelum mengedit.");
+    if(!day)throw new ForbiddenError("Hari tidak ditemukan");
+    const access=currentProjectAccess(db,user,loaded.report.projectId);
+    if(!canEditReport(access.user,access.facts,{submittedBy:loaded.report.submittedBy,status:"submitted",deletedAt:null,dayReviewedAt:day.reviewed_at,dayDate:loaded.report.dayDate,timezone:loaded.report.timezone},now,editDeadline))throw new ForbiddenError("Akses edit sudah berubah");
+    const current=raw.prepare('select updated_at from reports where id=? and deleted_at is null').get(reportId) as {updated_at:number}|undefined;
+    if(!current||current.updated_at!==loaded.report.updatedAt)throw new ValidationError("Laporan berubah saat disimpan. Muat ulang halaman.");
     raw
       .prepare(
         `insert into report_revisions (id, report_id, edited_by, snapshot_json, changes_json, created_at)
@@ -278,7 +302,8 @@ export async function applyReportEdit(
         now,
       );
 
-    raw.prepare(`update reports set notes = ?, phase_note = ?, handover_note = ?, observed_at = ?, updated_at = ? where id = ?`).run(input.notes, phaseNote, handoverNote, observedAt, now, reportId);
+    const updatedAt=Math.max(now,current.updated_at+1,(day.reviewed_at??0)+1);
+    raw.prepare(`update reports set notes = ?, phase_note = ?, handover_note = ?, observed_at = ?, updated_at = ? where id = ?`).run(input.notes, phaseNote, handoverNote, observedAt, updatedAt, reportId);
     if(loaded.report.phase === "closing" && (handoverNote!==snapshot.handoverNote || observedAt!==snapshot.observedAt)) {
       const latest=raw.prepare("select handover_note from reports where project_day_id=? and phase='closing' and status='submitted' and deleted_at is null order by observed_at desc,submitted_at desc,id desc limit 1").get(loaded.report.projectDayId) as {handover_note:string|null}|undefined;
       raw.prepare("update project_days set handover_note=?,updated_at=? where id=?").run(latest?.handover_note??null,now,loaded.report.projectDayId);
@@ -289,6 +314,12 @@ export async function applyReportEdit(
     );
     for (const r of input.results) {
       updateResult.run(r.result, r.note ?? null, reportId, r.projectChecklistItemId);
+      const target=loaded.report.results.find(item=>item.projectChecklistItemId===r.projectChecklistItemId);
+      if(!target)throw new ValidationError("Poin tidak termasuk laporan ini");
+      for(const id of r.photoIds) {
+        const claim=raw.prepare("update photos set owner_type='check_result',owner_id=? where id=? and owner_type='report' and owner_id=? and uploaded_by=? and project_id=? and project_day_id=? and deleted_at is null").run(target.checkResultId,id,user.id,user.id,loaded.report.projectId,loaded.report.projectDayId);
+        if(claim.changes!==1)throw new ValidationError("Foto sudah digunakan. Unggah foto baru.");
+      }
     }
 
     raw
@@ -314,7 +345,7 @@ export async function applyReportEdit(
 export interface FieldChange {
   projectChecklistItemId: string;
   label: string;
-  field: "result" | "note" | "observedAt" | "phaseNote" | "handoverNote";
+  field: "result" | "note" | "observedAt" | "phaseNote" | "handoverNote" | "photos";
   from: string | null;
   to: string | null;
 }

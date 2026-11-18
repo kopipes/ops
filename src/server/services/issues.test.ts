@@ -135,6 +135,7 @@ beforeEach(async () => {
   dayId = days[0].id;
 
   await addMember(db, admin, projectId, "u-crew", "crew");
+  await addMember(db, admin, projectId, "u-mgr", "crew");
   await seedPhoto("ph-1", "u-crew");
 });
 
