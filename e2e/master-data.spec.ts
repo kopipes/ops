@@ -22,8 +22,10 @@ test("manager can open master checklist and sees items", async ({ page }) => {
   await page.goto(`${BASE}/master/checklist-items`);
 
   await expect(page.getByRole("heading", { name: "Master Checklist" })).toBeVisible();
-  // Seeded items are global, so a manager must see them.
-  await expect(page.getByText("Lampu panggung & lighting berfungsi")).toBeVisible();
+  // Seeded items are global, so a manager must see them. This spec runs at a
+  // mobile viewport, where the list renders as cards (the desktop row-list table
+  // is hidden).
+  await expect(page.locator("ul").getByText("Lampu panggung & lighting berfungsi")).toBeVisible();
 });
 
 test("admin creates a global checklist item and it appears in the list", async ({ page }) => {
@@ -36,7 +38,8 @@ test("admin creates a global checklist item and it appears in the list", async (
   await page.getByLabel("Fase").selectOption("opening");
   await page.getByRole("button", { name: "Tambah item" }).click();
 
-  await expect(page.getByText(label)).toBeVisible();
+  // Shown as a card at this (mobile) viewport.
+  await expect(page.locator("ul").getByText(label)).toBeVisible();
 });
 
 test("manager sees the division locked to their own on the item form", async ({ page }) => {
@@ -59,15 +62,17 @@ test("deactivating an item hides it by default but keeps it visible when toggled
   await page.getByRole("button", { name: "+ Item" }).click();
   await page.getByLabel("Label item").fill(label);
   await page.getByRole("button", { name: "Tambah item" }).click();
-  await expect(page.getByText(label)).toBeVisible();
+  const cards = page.locator("ul");
+  await expect(cards.getByText(label)).toBeVisible();
 
-  const card = page.locator("li", { hasText: label }).first();
-  await card.getByRole("button", { name: "Nonaktifkan" }).click();
+  await page.locator("li", { hasText: label }).first().getByRole("button", { name: "Nonaktifkan" }).click();
   await expect(page.getByText(label)).toHaveCount(0);
 
   await page.getByLabel("Tampilkan item nonaktif").check();
-  await expect(page.getByText(label)).toBeVisible();
-  await expect(page.getByText("Nonaktif").first()).toBeVisible();
+  const card = page.locator("li", { hasText: label }).first();
+  await expect(card).toBeVisible();
+  // "Nonaktif" also matches the item label case-insensitively; target the badge.
+  await expect(card.getByText("Nonaktif", { exact: true })).toBeVisible();
 });
 
 test("crew cannot reach master data (§12)", async ({ page }) => {
