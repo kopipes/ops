@@ -3,6 +3,7 @@
  * of truth for validation). Server always re-validates — see §9.3.
  */
 import { z } from "zod";
+import { MAX_DATE_RANGE_DAYS } from "./datetime";
 import { PROJECT_ROLES } from "./project-roles";
 
 export const PHASES = ["opening", "monitoring", "closing"] as const;
@@ -152,85 +153,100 @@ export const checkbox = (v: FormDataEntryValue | null) => v === "on" || v === "t
 // ---------------------------------------------------------------------------
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const projectDateSchema = z.string().refine((value) => {
+  if (!DATE_RE.test(value) || Number(value.slice(0, 4)) < 100) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, "Tanggal project tidak valid");
+
+function projectRangeFits({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const difference = Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`);
+  return difference < MAX_DATE_RANGE_DAYS * 86_400_000;
+}
+
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const dayTypeSchema = z.enum(["loading_in", "event", "loading_out"]);
 export type DayType = z.infer<typeof dayTypeSchema>;
 
-export const projectInputSchema = z
-  .object({
-    code: z
-      .string()
-      .trim()
-      .min(3, "Kode project minimal 3 karakter")
-      .max(40, "Kode project maksimal 40 karakter")
-      .regex(/^[A-Za-z0-9-]+$/, "Kode hanya boleh huruf, angka, dan tanda hubung"),
-    name: trimmed(3, 120, "Nama project 3–120 karakter"),
-    client: z
-      .string()
-      .trim()
-      .max(120)
-      .transform((v) => (v === "" ? undefined : v))
-      .optional(),
-    venue: trimmed(2, 120, "Venue wajib diisi"),
-    address: z
-      .string()
-      .trim()
-      .max(300)
-      .transform((v) => (v === "" ? undefined : v))
-      .optional(),
-    description: z
-      .string()
-      .trim()
-      .max(1000)
-      .transform((v) => (v === "" ? undefined : v))
-      .optional(),
-    startDate: z.string().regex(DATE_RE, "Tanggal mulai tidak valid"),
-    endDate: z.string().regex(DATE_RE, "Tanggal selesai tidak valid"),
-    timezone: z.string().min(1, "Timezone wajib diisi"),
-    ownerDivisionId: z.string().min(1, "Divisi owner wajib dipilih"),
-    additionalDivisionIds: z.array(z.string().min(1)).default([]),
-    openingWindowStart: z.string().regex(TIME_RE, "Format jam HH:MM"),
-    openingWindowEnd: z.string().regex(TIME_RE, "Format jam HH:MM"),
-    closingWindowStart: z.string().regex(TIME_RE, "Format jam HH:MM"),
-    closingWindowEnd: z.string().regex(TIME_RE, "Format jam HH:MM"),
-    saveAsDraft: z.boolean().default(false),
-    /** Checklist source (§5.3). */
-    checklistSource: z.enum(["template", "project", "empty"]).default("template"),
-    templateIds: z.array(z.string().min(1)).default([]),
-    sourceProjectId: z
-      .string()
-      .trim()
-      .optional()
-      .transform((v) => (v === "" || v === undefined ? null : v)),
-    /** Hand-picked / custom project checklist rows. */
-    checklistItems: z
-      .array(
-        z.object({
-          sourceItemId: z.string().nullable().default(null),
-          phase: phaseSchema,
-          categoryName: z.string().trim().min(1).max(60),
-          label: trimmed(2, 200, "Label item 2–200 karakter"),
-          description: z.string().trim().max(500).nullable().default(null),
-          isRequired: z.coerce.boolean().default(true),
-          requiresPhoto: z.coerce.boolean().default(false),
-          /** §5.3 no.3: also save a custom item into the master list. */
-          saveToMaster: z.coerce.boolean().default(false),
-        }),
-      )
-      .default([]),
-    members: z
-      .array(
-        z.object({
-          userId: z.string().min(1),
-          roleInProject: projectRoleSchema.default("crew"),
-        }),
-      )
-      .default([]),
-  })
+const projectFieldsSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(3, "Kode project minimal 3 karakter")
+    .max(40, "Kode project maksimal 40 karakter")
+    .regex(/^[A-Za-z0-9-]+$/, "Kode hanya boleh huruf, angka, dan tanda hubung"),
+  name: trimmed(3, 120, "Nama project 3–120 karakter"),
+  client: z
+    .string()
+    .trim()
+    .max(120)
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
+  venue: trimmed(2, 120, "Venue wajib diisi"),
+  address: z
+    .string()
+    .trim()
+    .max(300)
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .max(1000)
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
+  startDate: projectDateSchema,
+  endDate: projectDateSchema,
+  timezone: z.string().min(1, "Timezone wajib diisi"),
+  ownerDivisionId: z.string().min(1, "Divisi owner wajib dipilih"),
+  additionalDivisionIds: z.array(z.string().min(1)).default([]),
+  openingWindowStart: z.string().regex(TIME_RE, "Format jam HH:MM"),
+  openingWindowEnd: z.string().regex(TIME_RE, "Format jam HH:MM"),
+  closingWindowStart: z.string().regex(TIME_RE, "Format jam HH:MM"),
+  closingWindowEnd: z.string().regex(TIME_RE, "Format jam HH:MM"),
+  saveAsDraft: z.boolean().default(false),
+  /** Checklist source (§5.3). */
+  checklistSource: z.enum(["template", "project", "empty"]).default("template"),
+  templateIds: z.array(z.string().min(1)).default([]),
+  sourceProjectId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? null : v)),
+  /** Hand-picked / custom project checklist rows. */
+  checklistItems: z
+    .array(
+      z.object({
+        sourceItemId: z.string().nullable().default(null),
+        phase: phaseSchema,
+        categoryName: z.string().trim().min(1).max(60),
+        label: trimmed(2, 200, "Label item 2–200 karakter"),
+        description: z.string().trim().max(500).nullable().default(null),
+        isRequired: z.coerce.boolean().default(true),
+        requiresPhoto: z.coerce.boolean().default(false),
+        /** §5.3 no.3: also save a custom item into the master list. */
+        saveToMaster: z.coerce.boolean().default(false),
+      }),
+    )
+    .default([]),
+  members: z
+    .array(
+      z.object({
+        userId: z.string().min(1),
+        roleInProject: projectRoleSchema.default("crew"),
+      }),
+    )
+    .default([]),
+});
+
+export const projectInputSchema = projectFieldsSchema
   .refine((v) => v.endDate >= v.startDate, {
     message: "Tanggal selesai tidak boleh sebelum tanggal mulai",
     path: ["endDate"],
+  })
+  .refine(projectRangeFits, {
+    message: `Rentang project maksimal ${MAX_DATE_RANGE_DAYS} hari`, path: ["endDate"],
   })
   .refine((v) => v.openingWindowStart < v.openingWindowEnd, {
     message: "Window opening: jam mulai harus sebelum jam selesai",
@@ -246,6 +262,19 @@ export const projectInputSchema = z
   });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;
+
+export const projectDetailsInputSchema = projectFieldsSchema.pick({
+  code: true, name: true, client: true, venue: true, address: true, description: true,
+  startDate: true, endDate: true, ownerDivisionId: true, additionalDivisionIds: true,
+}).refine((input) => input.startDate <= input.endDate, {
+  message: "Tanggal selesai tidak boleh sebelum tanggal mulai", path: ["endDate"],
+}).refine(projectRangeFits, {
+  message: `Rentang project maksimal ${MAX_DATE_RANGE_DAYS} hari`, path: ["endDate"],
+}).refine((input) => !input.additionalDivisionIds.includes(input.ownerDivisionId), {
+  message: "Divisi tambahan tidak boleh sama dengan divisi penanggung jawab", path: ["additionalDivisionIds"],
+});
+export type ProjectDetailsInput = z.infer<typeof projectDetailsInputSchema>;
+
 
 /** §6.2 status transitions. */
 export const PROJECT_STATUS_FLOW = {

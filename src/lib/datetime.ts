@@ -99,13 +99,15 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+export const MAX_DATE_RANGE_DAYS = 4000;
+
 /** Inclusive list of dates from start to end. */
 export function dateRange(start: string, end: string): string[] {
   const out: string[] = [];
   let cur = start;
   // Guard against a reversed/insane range so a bad input cannot hang the server.
   let guard = 0;
-  while (cur <= end && guard++ < 4000) {
+  while (cur <= end && guard++ < MAX_DATE_RANGE_DAYS) {
     out.push(cur);
     cur = addDays(cur, 1);
   }

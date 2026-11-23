@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { ProjectDetailsForm } from "@/components/project/ProjectDetailsForm";
 import { ProjectChecklistEditor } from "@/components/project/ProjectChecklistEditor";
 import { DeleteProjectButton } from "@/components/project/DeleteProjectButton";
 import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
@@ -119,6 +120,10 @@ export default async function ProjectDetailPage({
     project.createdBy ? db.select({ name: users.name }).from(users).where(eq(users.id, project.createdBy)).get() : undefined,
   ]);
 
+  const editingDetails = tab === "settings" && canManage && edit === "1";
+  const divisionOptions = editingDetails ? db.select({ id: divisions.id, name: divisions.name }).from(divisions)
+    .where(or(eq(divisions.isActive, true), inArray(divisions.id, [project.ownerDivisionId, ...facts.divisionIds])))
+    .orderBy(asc(divisions.name)).all() : [];
   const editingChecklist = tab === "checklist" && canManage && edit === "1";
   const checklistHistory = tab === "checklist" && canManage && !editingChecklist ? listProjectChecklistHistory(db, id) : [];
   const candidates = canManage ? await listMemberCandidates(db, id) : [];
@@ -566,17 +571,37 @@ export default async function ProjectDetailPage({
       ) : null}
 
       {/* ---------------- Settings ---------------- */}
-      {tab === "settings" ? (
+      {editingDetails ? (
+        <ProjectDetailsForm
+          key={project.updatedAt}
+          projectId={id}
+          updatedAt={project.updatedAt}
+          datesLocked={project.status === "completed" || project.status === "archived"}
+          canChangeOwnerDivision={canDeleteProject(session.user)}
+          divisionOptions={divisionOptions}
+          initial={{
+            code: project.code, name: project.name, client: project.client ?? "", venue: project.venue,
+            address: project.address ?? "", description: project.description ?? "", startDate: project.startDate,
+            endDate: project.endDate, ownerDivisionId: project.ownerDivisionId, additionalDivisionIds: facts.divisionIds,
+          }}
+        />
+      ) : tab === "settings" ? (
         <section className="flex flex-col gap-4">
+          {saved === "details" && canManage ? <p role="status" className="tone-success rounded-lg px-3 py-2 text-sm">Detail project tersimpan.</p> : null}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="section-title">Detail project</h2>
+            {canManage ? <Link className="btn-primary" href={`/projects/${id}?tab=settings&edit=1`}>Edit detail project</Link> : null}
+          </div>
           <dl
             className="rounded-xl border px-4 py-3 text-sm"
             style={{ borderColor: "var(--border)", background: "var(--surface)" }}
           >
             {[
-              ["Kode", project.code],
+              ["Nomor project", project.code],
               ["Klien", project.client ?? "—"],
               ["Venue", project.venue],
               ["Alamat", project.address ?? "—"],
+              ["Deskripsi", project.description ?? "—"],
               ["Rentang", `${project.startDate} → ${project.endDate}`],
               ["Timezone", project.timezone],
               [
@@ -644,8 +669,7 @@ export default async function ProjectDetailPage({
                 </button>
               </form>
               <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-                Project selesai/arsip bersifat read-only; perubahan tanggal ditolak sampai dibuka
-                kembali.
+                Aktifkan kembali project yang selesai atau diarsipkan untuk mengubah tanggal.
               </p>
             </div>
           ) : null}

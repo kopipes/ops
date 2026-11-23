@@ -11,6 +11,7 @@ import {
   dayTypeUpdateSchema,
   deleteProjectSchema,
   projectInputSchema,
+  projectDetailsInputSchema,
   projectRoleSchema,
   projectChecklistEditSchema,
   PHASES,
@@ -99,8 +100,22 @@ export async function deleteProjectAction(
   redirect("/projects?deleted=1");
 }
 
+function projectDetailsFromForm(formData: FormData) {
+  return {
+    code: formData.get("code"),
+    name: formData.get("name"),
+    client: formData.get("client") ?? "",
+    venue: formData.get("venue"),
+    address: formData.get("address") ?? "",
+    description: formData.get("description") ?? "",
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    ownerDivisionId: formData.get("ownerDivisionId"),
+    additionalDivisionIds: formData.getAll("additionalDivisionIds").map(String).filter(Boolean),
+  };
+}
+
 function parseProjectForm(formData: FormData) {
-  const additional = formData.getAll("additionalDivisionIds").map(String).filter(Boolean);
 
   const memberIds = formData.getAll("memberIds").map(String).filter(Boolean);
   const members = memberIds.map((userId) => ({
@@ -129,17 +144,8 @@ function parseProjectForm(formData: FormData) {
   }));
 
   return projectInputSchema.safeParse({
-    code: formData.get("code"),
-    name: formData.get("name"),
-    client: formData.get("client") ?? "",
-    venue: formData.get("venue"),
-    address: formData.get("address") ?? "",
-    description: formData.get("description") ?? "",
-    startDate: formData.get("startDate"),
-    endDate: formData.get("endDate"),
+    ...projectDetailsFromForm(formData),
     timezone: formData.get("timezone") ?? "Asia/Jakarta",
-    ownerDivisionId: formData.get("ownerDivisionId"),
-    additionalDivisionIds: additional,
     openingWindowStart: formData.get("openingWindowStart") ?? "06:00",
     openingWindowEnd: formData.get("openingWindowEnd") ?? "11:00",
     closingWindowStart: formData.get("closingWindowStart") ?? "17:00",
@@ -189,16 +195,8 @@ export async function saveProjectAction(
     return { error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
   }
 
-  const existingId = String(formData.get("projectId") ?? "").trim();
-
   try {
     const db = getDb();
-    if (existingId) {
-      await updateProject(db, user, existingId, parsed.data);
-      revalidateProject(existingId);
-      return { ok: true, projectId: existingId };
-    }
-
     // Authorize and resolve source data before creating any destination rows.
     const { rows } = await resolveWizardChecklist(formData);
     const { projectId } = await createProject(db, user, parsed.data);
@@ -231,6 +229,30 @@ export async function saveProjectAction(
     if (isRedirectError(err)) throw err;
     return toError(err);
   }
+}
+
+export async function updateProjectDetailsAction(
+  _prev: ProjectActionState,
+  formData: FormData,
+): Promise<ProjectActionState> {
+  const { user } = await requireUserWithoutPasswordChange();
+  const projectId = formData.get("projectId");
+  const timestamp = formData.get("updatedAt");
+  if (typeof projectId !== "string" || !projectId || typeof timestamp !== "string" || !/^\d{1,16}$/.test(timestamp)) {
+    return { error: "Form project tidak valid. Muat ulang halaman." };
+  }
+  const parsed = projectDetailsInputSchema.safeParse(projectDetailsFromForm(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Periksa kembali detail project." };
+
+  try {
+    await updateProject(getDb(), user, projectId, parsed.data, Number(timestamp));
+  } catch (err) {
+    return toError(err);
+  }
+  revalidateProject(projectId);
+  for (const path of ["/issues", "/reports", "/dashboard"]) revalidatePath(path);
+  for (const phase of PHASES) revalidatePath(`/projects/[id]/days/[date]/${phase}`, "page");
+  redirect(`/projects/${projectId}?tab=settings&saved=details`);
 }
 
 /**

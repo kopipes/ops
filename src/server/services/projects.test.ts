@@ -149,6 +149,30 @@ describe("Admin project deletion", () => {
     expect(sqlite.pragma("foreign_key_check")).toEqual([]);
   });
 
+  it("can reuse a deleted code without inheriting its days and reports", async () => {
+    const code = "EVT-2026-0042";
+    const original = await createProject(db, admin, projectInput({ code, name: "Project lama" }));
+    const [oldDay] = await listProjectDays(db, original.projectId);
+    db.insert(schema.reports).values({
+      id: "old-report", projectId: original.projectId, projectDayId: oldDay.id, submittedBy: admin.id,
+      phase: "opening", clientSubmissionId: "old-submit", status: "submitted", observedAt: now,
+    }).run();
+    await softDeleteProject(db, admin, original.projectId, "Penomoran ulang", code);
+
+    const replacement = await createProject(db, mgr, projectInput({ code: code.toLowerCase(), name: "Project baru" }));
+    expect(replacement.projectId).not.toBe(original.projectId);
+    expect(await visibleProjectIds(db, admin)).toEqual([replacement.projectId]);
+    const [newDay] = await listProjectDays(db, replacement.projectId);
+    expect(newDay.id).not.toBe(oldDay.id);
+    expect(db.select().from(schema.reports).where(eq(schema.reports.id, "old-report")).get()?.projectId).toBe(original.projectId);
+    expect(db.select().from(schema.projects).where(eq(schema.projects.code, code)).all()).toHaveLength(2);
+
+    // Keeping its own number is a valid edit even when a deleted row also has it.
+    await updateProject(db, mgr, replacement.projectId, projectInput({ code, name: "Project baru direvisi" }));
+    await expect(createProject(db, admin, projectInput({ code }))).rejects.toThrow("sudah dipakai");
+    expect(sqlite.pragma("foreign_key_check")).toEqual([]);
+  });
+
   it("rolls back the deletion if its audit cannot be saved", async () => {
     const { projectId } = await createProject(db, admin, projectInput());
     sqlite.exec("CREATE TRIGGER reject_delete_audit BEFORE INSERT ON audit_logs WHEN NEW.action = 'project.soft_deleted' BEGIN SELECT RAISE(FAIL, 'audit rejected'); END;");
@@ -366,6 +390,20 @@ describe("updateProject date rules (§11.3)", () => {
     await expect(
       updateProject(db, admin, projectId, projectInput({ name: "Nama Baru" })),
     ).resolves.toBeDefined();
+  });
+
+  it("can edit to an available deleted number, rejects active duplicates and rejects stale forms", async () => {
+    const old = await createProject(db, admin, projectInput({ code: "EVT-OLDCODE" }));
+    await softDeleteProject(db, admin, old.projectId, "Diganti", "EVT-OLDCODE");
+    const current = await createProject(db, mgr, projectInput({ code: "EVT-MINE" }));
+    await createProject(db, admin, projectInput({ code: "EVT-INUSE" }));
+    const project = db.select().from(schema.projects).where(eq(schema.projects.id, current.projectId)).get()!;
+    await expect(updateProject(db, mgr, current.projectId, projectInput({ code: "EVT-INUSE" }), project.updatedAt))
+      .rejects.toThrow("sudah dipakai");
+    await updateProject(db, mgr, current.projectId, projectInput({ code: "EVT-OLDCODE", name: "Nama baru" }), project.updatedAt);
+    await expect(updateProject(db, mgr, current.projectId, projectInput({ code: "EVT-MINE" }), project.updatedAt))
+      .rejects.toThrow("Detail project sudah berubah");
+    expect(db.select().from(schema.projects).where(eq(schema.projects.id, current.projectId)).get()?.code).toBe("EVT-OLDCODE");
   });
 
   it("only admin may change the owner division", async () => {

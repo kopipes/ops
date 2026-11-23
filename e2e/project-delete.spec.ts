@@ -75,6 +75,19 @@ for (const width of [390, 1440]) {
       const audit = page.locator("main li").filter({ hasText: code }).filter({ hasText: "project.soft_deleted" });
       await expect(audit).toHaveCount(1);
       await expect(audit).toContainText("Project duplikat untuk pengujian");
+      if (width === 390) {
+        await page.goto("/projects/new");
+        await waitForHydration(page, 'ol[aria-label="Langkah wizard"]');
+        await page.getByLabel("Kode project", { exact: true }).fill(code);
+        await page.getByLabel("Nama project", { exact: true }).fill("Project pengganti");
+        await page.getByLabel("Venue", { exact: true }).fill("Venue pengganti");
+        for (let step = 0; step < 4; step++) await page.getByRole("button", { name: "Lanjut →", exact: true }).click();
+        await page.getByRole("button", { name: "Simpan project", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "Project pengganti", exact: true })).toBeVisible();
+        expect(page.url()).not.toBe(url);
+        expect((await page.goto(url))?.status()).toBe(404);
+      }
+
     } finally {
       await managerContext.close();
     }

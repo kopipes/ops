@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { recordTemplateUsage } from "./templates";
 import {
   auditLogs,
+  dayComments,
   issues,
   photos,
   projectDays,
@@ -27,7 +28,7 @@ import {
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
 import { addDays, dateRange } from "@/lib/datetime";
-import { deleteProjectSchema, PROJECT_STATUS_FLOW, type ProjectInput } from "@/lib/schemas";
+import { deleteProjectSchema, PROJECT_STATUS_FLOW, type ProjectDetailsInput, type ProjectInput } from "@/lib/schemas";
 import type { ProjectStatus } from "@/server/db/schema";
 import {
   canManageProject,
@@ -104,12 +105,19 @@ function dayHasData(db: DB, projectDayId: string): boolean {
     .limit(1).all();
   if (photo.length > 0) return true;
 
+  const comment = db.select({ id: dayComments.id }).from(dayComments)
+    .where(eq(dayComments.projectDayId, projectDayId)).get();
+  if (comment) return true;
+
   const day = db
-    .select({ reviewedAt: projectDays.reviewedAt, handoverNote: projectDays.handoverNote })
+    .select({
+      reviewedAt: projectDays.reviewedAt, handoverNote: projectDays.handoverNote,
+      assignedUserId: projectDays.assignedUserId, dayType: projectDays.dayType,
+    })
     .from(projectDays)
     .where(eq(projectDays.id, projectDayId))
     .get();
-  if (day?.reviewedAt || day?.handoverNote) return true;
+  if (day && (day.reviewedAt || day.handoverNote || day.assignedUserId || day.dayType !== "event")) return true;
 
   return false;
 }
@@ -208,77 +216,82 @@ export async function createProject(
     throw new ForbiddenError("Kamu hanya bisa membuat project untuk divisimu");
   }
 
-  const codeTaken = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.code, input.code.toUpperCase()))
-    .get();
-  if (codeTaken) throw new ValidationError(`Kode project "${input.code}" sudah dipakai`);
+  return db.transaction((tx) => {
+    assertProjectCodeAvailable(tx, input.code);
 
-  const id = randomUUID();
-  const now = Date.now();
+    const id = randomUUID();
+    const now = Date.now();
 
-  await db.insert(projects).values({
-    id,
-    code: input.code.toUpperCase(),
-    name: input.name,
-    client: input.client ?? null,
-    venue: input.venue,
-    address: input.address ?? null,
-    description: input.description ?? null,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    timezone: input.timezone,
-    ownerDivisionId: input.ownerDivisionId,
-    status: input.saveAsDraft ? "draft" : "active",
-    openingWindowStart: input.openingWindowStart,
-    openingWindowEnd: input.openingWindowEnd,
-    closingWindowStart: input.closingWindowStart,
-    closingWindowEnd: input.closingWindowEnd,
-    createdBy: user.id,
-    createdAt: now,
-    updatedAt: now,
-  });
+    tx.insert(projects).values({
+      id,
+      code: input.code.toUpperCase(),
+      name: input.name,
+      client: input.client ?? null,
+      venue: input.venue,
+      address: input.address ?? null,
+      description: input.description ?? null,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      timezone: input.timezone,
+      ownerDivisionId: input.ownerDivisionId,
+      status: input.saveAsDraft ? "draft" : "active",
+      openingWindowStart: input.openingWindowStart,
+      openingWindowEnd: input.openingWindowEnd,
+      closingWindowStart: input.closingWindowStart,
+      closingWindowEnd: input.closingWindowEnd,
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    }).run();
 
-  for (const divisionId of new Set(input.additionalDivisionIds)) {
-    await db.insert(projectDivisions).values({ projectId: id, divisionId }).onConflictDoNothing();
-  }
+    for (const divisionId of new Set(input.additionalDivisionIds)) {
+      tx.insert(projectDivisions).values({ projectId: id, divisionId }).onConflictDoNothing().run();
+    }
 
-  const members = input.members.filter((member) => member.userId !== user.id);
-  for (const m of members) {
-    await db
-      .insert(projectMembers)
-      .values({
-        projectId: id,
-        userId: m.userId,
-        roleInProject: m.roleInProject,
-        isActive: true,
-        addedBy: user.id,
-        createdAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [projectMembers.projectId, projectMembers.userId],
-        set: { roleInProject: m.roleInProject, isActive: true },
-      });
-  }
+    const members = input.members.filter((member) => member.userId !== user.id);
+    for (const m of members) {
+      tx
+        .insert(projectMembers)
+        .values({
+          projectId: id,
+          userId: m.userId,
+          roleInProject: m.roleInProject,
+          isActive: true,
+          addedBy: user.id,
+          createdAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [projectMembers.projectId, projectMembers.userId],
+          set: { roleInProject: m.roleInProject, isActive: true },
+        }).run();
+    }
 
-  const days = syncProjectDays(db, id, {
-    startDate: input.startDate,
-    endDate: input.endDate,
-  });
+    const days = syncProjectDays(tx, id, {
+      startDate: input.startDate,
+      endDate: input.endDate,
+    });
 
-  audit(db, user, "project.created", id, {
-    code: input.code,
-    status: input.saveAsDraft ? "draft" : "active",
-    members: members.length,
-    days: days.inserted,
-  });
+    audit(tx, user, "project.created", id, {
+      code: input.code,
+      status: input.saveAsDraft ? "draft" : "active",
+      members: members.length,
+      days: days.inserted,
+    });
 
-  if (input.checklistSource === "template") {
-    recordTemplateUsage(db, user, id, input.templateIds);
-  }
+    if (input.checklistSource === "template") {
+      recordTemplateUsage(tx, user, id, input.templateIds);
+    }
 
-  return { projectId: id, days };
+    return { projectId: id, days };
+  }, { behavior: "immediate" });
+}
+
+function assertProjectCodeAvailable(db: DB, code: string, excludeProjectId?: string) {
+  const existing = db.select({ id: projects.id }).from(projects).where(and(
+    eq(projects.code, code.toUpperCase()), isNull(projects.deletedAt),
+    excludeProjectId ? ne(projects.id, excludeProjectId) : undefined,
+  )).get();
+  if (existing) throw new ValidationError(`Kode project "${code}" sudah dipakai`);
 }
 
 export interface UpdateProjectResult {
@@ -290,12 +303,16 @@ export async function updateProject(
   db: DB,
   actor: ActingUser,
   projectId: string,
-  input: ProjectInput,
+  input: ProjectDetailsInput,
+  expectedUpdatedAt?: number,
 ): Promise<UpdateProjectResult> {
   return db.transaction((tx) => {
     const { user } = requireProjectManagement(tx, actor, projectId);
     const current = tx.select().from(projects).where(eq(projects.id, projectId)).get();
     if (!current) throw new ValidationError("Project tidak ditemukan");
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== current.updatedAt) {
+      throw new ValidationError("Detail project sudah berubah. Muat ulang sebelum menyimpan.");
+    }
 
     // §11.3 rule 4: date edits on completed/archived projects are refused.
     const datesChanged =
@@ -311,12 +328,7 @@ export async function updateProject(
       throw new ForbiddenError("Hanya Admin yang bisa mengubah divisi owner");
     }
 
-    const codeTaken = tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.code, input.code.toUpperCase()), ne(projects.id, projectId)))
-      .get();
-    if (codeTaken) throw new ValidationError(`Kode project "${input.code}" sudah dipakai`);
+    assertProjectCodeAvailable(tx, input.code, projectId);
 
     tx
       .update(projects)
@@ -329,13 +341,8 @@ export async function updateProject(
         description: input.description ?? null,
         startDate: input.startDate,
         endDate: input.endDate,
-        timezone: input.timezone,
         ownerDivisionId: input.ownerDivisionId,
-        openingWindowStart: input.openingWindowStart,
-        openingWindowEnd: input.openingWindowEnd,
-        closingWindowStart: input.closingWindowStart,
-        closingWindowEnd: input.closingWindowEnd,
-        updatedAt: Date.now(),
+        updatedAt: Math.max(Date.now(), current.updatedAt + 1),
       })
       .where(eq(projects.id, projectId)).run();
 
@@ -353,6 +360,7 @@ export async function updateProject(
 
     audit(tx, user, "project.updated", projectId, {
       datesChanged,
+      ...(current.code !== input.code.toUpperCase() ? { previousCode: current.code, code: input.code.toUpperCase() } : {}),
       ...(datesChanged ? days : {}),
     });
 
@@ -370,7 +378,7 @@ function syncProjectDaysIfAllowed(
   db: DB,
   user: ActingUser,
   projectId: string,
-  input: ProjectInput,
+  input: ProjectDetailsInput,
 ): DaySyncResult {
   const result = syncProjectDays(db, projectId, {
     startDate: input.startDate,

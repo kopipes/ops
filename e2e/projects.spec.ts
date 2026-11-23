@@ -303,3 +303,32 @@ test("checklist changes apply next time and Admin Project can download the old r
     await viewerContext.close();
   }
 });
+
+test("Owner can edit saved project details and Crew cannot open the editor", async ({ page, browser }) => {
+  await login(page, "manager@ops.test");
+  const url = await createProjectViaWizard(page, {
+    name: `Edit project ${Date.now()}`, code: uniqueCode(), template: false,
+  });
+  const updatedName = `Project diperbarui ${Date.now()}`;
+  await page.goto(`${url}?tab=settings`);
+  await page.getByRole("link", { name: "Edit detail project", exact: true }).click();
+  await page.getByLabel("Nama project", { exact: true }).fill(updatedName);
+  await page.getByLabel("Venue", { exact: true }).fill("Venue baru");
+  await page.getByLabel("Deskripsi (opsional)", { exact: true }).fill("Detail operasional terbaru");
+  await page.getByRole("button", { name: "Simpan perubahan", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Detail project tersimpan.");
+  await expect(page.getByRole("heading", { name: updatedName, exact: true })).toBeVisible();
+  await expect(page.getByText("Detail operasional terbaru", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  const crew = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  try {
+    const viewer = await crew.newPage();
+    await login(viewer, "crew@ops.test");
+    await viewer.goto(`${url}?tab=settings&edit=1`);
+    await expect(viewer.getByRole("heading", { name: updatedName, exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Nama project", { exact: true })).toHaveCount(0);
+  } finally {
+    await crew.close();
+  }
+});
