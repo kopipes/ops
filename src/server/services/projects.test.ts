@@ -16,6 +16,7 @@ import {
   softDeleteProject,
   syncProjectDays,
   updateProject,
+  updateProjectDay,
 } from "./projects";
 import {
   buildChecklistFromProject,
@@ -732,6 +733,27 @@ describe("Owner and member access", () => {
     await expect(removeMember(db, admin, projectId, mgr.id)).rejects.toThrow("Akses Owner");
     await setMemberRole(db, mgr, projectId, crew.id, "crew");
     expect(await listMembers(db, projectId)).toMatchObject([{ userId: crew.id, roleInProject: "crew" }]);
+  });
+
+  it("revokes setup writes when a Manager owner has been demoted despite an older session role", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const [day] = await listProjectDays(db, projectId);
+    await db.update(schema.users).set({ role: "user" }).where(eq(schema.users.id, mgr.id));
+    await expect(updateProject(db, mgr, projectId, projectInput({ name: "Unauthorized change" }))).rejects.toThrow("Tidak punya akses");
+    await expect(setProjectStatus(db, mgr, projectId, "completed")).rejects.toThrow("Tidak punya akses");
+    expect(() => updateProjectDay(db, mgr, day.id, { dayType: "loading_in" })).toThrow("Tidak punya akses");
+    await expect(addMember(db, mgr, projectId, crew.id, "crew")).rejects.toThrow("Hanya Owner atau Admin");
+    expect((await loadFacts(db, projectId)).status).toBe("active");
+    expect((await listProjectDays(db, projectId))[0].dayType).toBe("event");
+  });
+
+  it("rolls back the project and date edits if saving its divisions fails", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const input = projectInput({ name: "Must roll back", startDate: "2026-11-01", additionalDivisionIds: ["missing-division"] });
+    await expect(updateProject(db, mgr, projectId, input)).rejects.toThrow(/foreign key/i);
+    const project = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
+    expect(project?.name).toBe(projectInput().name);
+    expect((await listProjectDays(db, projectId)).map((day) => day.date)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04"]);
   });
 
   it("blocks member edits by a same-division Manager assigned as Crew and by a Head Crew", async () => {

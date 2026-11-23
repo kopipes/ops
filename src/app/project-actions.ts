@@ -24,6 +24,7 @@ import {
   setProjectStatus,
   softDeleteProject,
   updateProject,
+  updateProjectDay,
 } from "@/server/services/projects";
 import {
   addMember,
@@ -36,8 +37,8 @@ import {
   syncProjectChecklist,
 } from "@/server/services/project-checklist";
 import { editProjectChecklist } from "@/server/services/project-checklist-editor";
-import { projectDays, divisions } from "@/server/db/schema";
-import { canCreateProject, canViewProjectWorkspace, canManageProject } from "@/server/permissions";
+import { divisions } from "@/server/db/schema";
+import { canCreateProject, canViewProjectWorkspace } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
 export interface ProjectActionState {
@@ -358,29 +359,8 @@ export async function assignOfficerAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
 
   try {
-    const db = getDb();
-    const day = await db
-      .select({ projectId: projectDays.projectId })
-      .from(projectDays)
-      .where(eq(projectDays.id, parsed.data.projectDayId))
-      .get();
-    if (!day) return;
-
-    const facts = await loadFacts(db, day.projectId);
-    if (!canManageProject(user, facts)) throw new ForbiddenError();
-
-    // Only project members may be officers; otherwise the assignment is dead weight.
-    if (parsed.data.userId) {
-      const isMember = facts.memberIds.includes(parsed.data.userId);
-      if (!isMember || facts.adminProjectIds.includes(parsed.data.userId)) throw new ValidationError("Petugas harus Crew atau Head Crew project");
-    }
-
-    await db
-      .update(projectDays)
-      .set({ assignedUserId: parsed.data.userId, updatedAt: Date.now() })
-      .where(eq(projectDays.id, parsed.data.projectDayId));
-
-    revalidateProject(day.projectId);
+    const projectId = updateProjectDay(getDb(), user, parsed.data.projectDayId, { assignedUserId: parsed.data.userId });
+    revalidateProject(projectId);
   } catch (err) {
     console.error("[assign officer]", toError(err));
   }
@@ -395,23 +375,8 @@ export async function setDayTypeAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
 
   try {
-    const db = getDb();
-    const day = await db
-      .select({ projectId: projectDays.projectId })
-      .from(projectDays)
-      .where(eq(projectDays.id, parsed.data.projectDayId))
-      .get();
-    if (!day) return;
-
-    const facts = await loadFacts(db, day.projectId);
-    if (!canManageProject(user, facts)) throw new ForbiddenError();
-
-    await db
-      .update(projectDays)
-      .set({ dayType: parsed.data.dayType, updatedAt: Date.now() })
-      .where(eq(projectDays.id, parsed.data.projectDayId));
-
-    revalidateProject(day.projectId);
+    const projectId = updateProjectDay(getDb(), user, parsed.data.projectDayId, { dayType: parsed.data.dayType });
+    revalidateProject(projectId);
   } catch (err) {
     console.error("[day type]", toError(err));
   }
