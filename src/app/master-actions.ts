@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { canViewProjectWorkspace } from "@/server/permissions";
+import { loadFacts } from "@/server/services/projects";
 import { getDb } from "@/server/db";
 import { requireUser } from "@/server/auth/current-user";
 import {
@@ -241,7 +243,9 @@ export async function templateFromProjectAction(
       .where(eq(projects.id, parsed.data.projectId))
       .get();
 
-    if (!project || project.deletedAt !== null) return { error: "Project tidak ditemukan" };
+    if (!project || project.deletedAt !== null || !canViewProjectWorkspace(user, await loadFacts(db, project.id))) {
+      return { error: "Project sumber tidak tersedia dalam aksesmu" };
+    }
 
     const res = await createTemplateFromProject(db, user, parsed.data, {
       projectDivisionId: project.ownerDivisionId,

@@ -29,7 +29,7 @@ export default async function NewIssuePage({
   const params = await searchParams;
   const db = getDb();
 
-  const ids = await visibleProjectIds(db, session.user);
+  const ids = await visibleProjectIds(db, session.user, { workspaceOnly: true });
   if (ids.length === 0) {
     if (params.projectId) notFound();
     redirect("/issues");
@@ -88,7 +88,7 @@ export default async function NewIssuePage({
         action={createIssueAction}
         projects={projectRows}
         categories={categories}
-        members={members.map((m) => ({ userId: m.userId, name: m.name }))}
+        members={members.filter((m) => m.roleInProject !== "admin_project").map((m) => ({ userId: m.userId, name: m.name }))}
         initial={{
           projectId,
           projectDayId: dayId,

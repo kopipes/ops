@@ -11,12 +11,14 @@ import {
   dayTypeUpdateSchema,
   deleteProjectSchema,
   projectInputSchema,
+  projectRoleSchema,
+  projectChecklistEditSchema,
+  PHASES,
   setMemberRoleSchema,
   setStatusSchema,
 } from "@/lib/schemas";
 import {
   createProject,
-  initialProjectMembers,
   generateProjectCode,
   loadFacts,
   setProjectStatus,
@@ -27,16 +29,15 @@ import {
   addMember,
   removeMember,
   setMemberRole,
-  setMembers,
 } from "@/server/services/members";
 import {
   buildChecklistFromProject,
   buildChecklistFromTemplates,
   syncProjectChecklist,
 } from "@/server/services/project-checklist";
-import { recordTemplateUsage } from "@/server/services/templates";
+import { editProjectChecklist } from "@/server/services/project-checklist-editor";
 import { projectDays, divisions } from "@/server/db/schema";
-import { canCreateProject, canViewProject, canManageProject } from "@/server/permissions";
+import { canCreateProject, canViewProjectWorkspace, canManageProject } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
 export interface ProjectActionState {
@@ -103,7 +104,7 @@ function parseProjectForm(formData: FormData) {
   const memberIds = formData.getAll("memberIds").map(String).filter(Boolean);
   const members = memberIds.map((userId) => ({
     userId,
-    roleInProject: (formData.get(`role_${userId}`) as "lead" | "crew") ?? "crew",
+    roleInProject: formData.get(`role_${userId}`) ?? "crew",
   }));
 
   // Checklist rows arrive as parallel arrays from the step-3 editor.
@@ -168,7 +169,7 @@ export async function resolveWizardChecklist(
   let base: Awaited<ReturnType<typeof buildChecklistFromTemplates>> = [];
   if (source === "template") base = await buildChecklistFromTemplates(db, templateIds);
   else if (source === "project" && sourceProjectId) {
-    if(!canViewProject(user,await loadFacts(db,sourceProjectId)))throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
+    if(!canViewProjectWorkspace(user,await loadFacts(db,sourceProjectId)))throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
     base = await buildChecklistFromProject(db, sourceProjectId);
   }
 
@@ -221,11 +222,6 @@ export async function saveProjectAction(
       });
     }
 
-    // Members from step 4.
-    if (parsed.data.members.length > 0) {
-      await setMembers(db, user, projectId, initialProjectMembers(user,parsed.data.members));
-    }
-
     revalidateProject(projectId);
     // Wizard step 5 ("Review & Simpan"): go straight to the new project.
     redirect(`/projects/${projectId}`);
@@ -250,66 +246,42 @@ function isRedirectError(err: unknown): boolean {
   );
 }
 
-/** Persists the project checklist from the Checklist tab. */
+/** Persists the active list while retaining the versions used in earlier reports. */
 export async function saveProjectChecklistAction(
   _prev: ProjectActionState,
   formData: FormData,
 ): Promise<ProjectActionState> {
-  const user = await acting();
-  const projectId = String(formData.get("projectId") ?? "");
-  if (!projectId) return { error: "Project tidak valid" };
+  const { user } = await requireUserWithoutPasswordChange();
+  const projectId = formData.get("projectId");
+  if (typeof projectId !== "string" || !projectId) return { error: "Project tidak valid" };
 
   try {
-    const db = getDb();
-    const facts = await loadFacts(db, projectId);
-    if (!canManageProject(user, facts)) throw new ForbiddenError();
-
-    // Single source of truth again: resolveWizardChecklist already includes the
-    // custom rows carried in cl_*, so only the free-text extras are appended.
-    const { rows } = await resolveWizardChecklist(formData);
-    const manual = String(formData.get("manualItems") ?? "");
-    const extraRows = manual
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((label, i) => ({
-        sourceItemId: null,
-        phase: (String(formData.get("manualPhase") ?? "opening") as "opening"),
-        categoryName: "Umum",
-        label,
-        description: null,
-        isRequired: true,
-        requiresPhoto: false,
-        sortOrder: rows.length + i,
-        isActive: true,
-      }));
-
-    await syncProjectChecklist(db, projectId, {
-      rows: [...rows, ...extraRows],
-      saveCustomToMaster: formData.get("saveCustomToMaster") === "on",
-      actor: user,
-      divisionId: facts.ownerDivisionId,
-    });
-
-    if (formData.get("checklistSource") === "template") {
-      recordTemplateUsage(db, user, projectId, formData.getAll("templateIds").map(String).filter(Boolean));
+    let rows: unknown;
+    try {
+      rows = JSON.parse(String(formData.get("rows") ?? ""));
+    } catch {
+      return { error: "Daftar checklist tidak valid" };
     }
-    revalidateProject(projectId);
-    return { ok: true, projectId };
+    const parsed = projectChecklistEditSchema.safeParse({ rows, version: formData.get("version") });
+    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Checklist tidak valid" };
+    editProjectChecklist(getDb(), user, projectId, parsed.data);
   } catch (err) {
     return toError(err);
   }
+  revalidatePath(`/projects/${projectId}`, "page");
+  for (const phase of PHASES) revalidatePath(`/projects/[id]/days/[date]/${phase}`, "page");
+  redirect(`/projects/${projectId}?tab=checklist&saved=1`);
 }
 
 export async function addMemberAction(formData: FormData): Promise<void> {
   const user = await acting();
   const projectId = String(formData.get("projectId") ?? "");
   const userId = String(formData.get("userId") ?? "");
-  const role = (formData.get("roleInProject") as "lead" | "crew") ?? "crew";
-  if (!projectId || !userId) return;
+  const role = projectRoleSchema.safeParse(formData.get("roleInProject") ?? "crew");
+  if (!projectId || !userId || !role.success) return;
 
   try {
-    await addMember(getDb(), user, projectId, userId, role);
+    await addMember(getDb(), user, projectId, userId, role.data);
     revalidateProject(projectId);
   } catch (err) {
     console.error("[add member]", toError(err));
@@ -400,7 +372,7 @@ export async function assignOfficerAction(formData: FormData): Promise<void> {
     // Only project members may be officers; otherwise the assignment is dead weight.
     if (parsed.data.userId) {
       const isMember = facts.memberIds.includes(parsed.data.userId);
-      if (!isMember) throw new ValidationError("Petugas harus member project");
+      if (!isMember || facts.adminProjectIds.includes(parsed.data.userId)) throw new ValidationError("Petugas harus Crew atau Head Crew project");
     }
 
     await db

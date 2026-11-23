@@ -28,7 +28,7 @@ export default async function DashboardPage() {
   }
 
   const db = getDb();
-  const ids = await visibleProjectIds(db, session.user);
+  const ids = await visibleProjectIds(db, session.user, { workspaceOnly: true });
   const data = await getDashboard(db, ids);
 
   const stat = (label: string, value: string | number, tone?: string) => <MetricCard label={label} value={value} icon={tone ? "alert" : "layers"} tone={tone ? "warning" : "accent"} />;

@@ -45,6 +45,7 @@ interface Props {
   defaultObservedTime: string;
   timezone: string;
   items: ChecklistItemView[];
+  checklistVersion: string;
   readOnly: boolean;
   readOnlyReason?: string;
   existing: ExistingReport | null;
@@ -77,6 +78,7 @@ export function ReportForm({
   defaultObservedTime,
   timezone,
   items,
+  checklistVersion,
   readOnly,
   readOnlyReason,
   existing,
@@ -290,6 +292,7 @@ export function ReportForm({
   const onSubmit = async (formData: FormData) => {
     setError(null);
     setPending(true);
+    formData.set("checklistVersion", checklistVersion);
     formData.set("clientSubmissionId", submissionIdRef.current);
     try {
       const res = await action({}, formData);

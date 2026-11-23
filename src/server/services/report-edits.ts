@@ -23,7 +23,7 @@ import {
   users,
 } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
-import { canEditReport, canViewProject, type ActingUser } from "@/server/permissions";
+import { canEditReport, canViewProject, isReportOnlyProjectMember, type ActingUser } from "@/server/permissions";
 import { toLocalDate, editDeadline } from "@/lib/datetime";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 import { loadFacts } from "./projects";
@@ -86,7 +86,7 @@ export async function getEditableReport(
   if (!day || !project || project.deletedAt !== null) return null;
 
   const facts = await loadFacts(db, row.projectId);
-  if(!canViewProject(user,facts))return null;
+  if (!canViewProject(user, facts) || (row.status !== "submitted" && isReportOnlyProjectMember(user, facts))) return null;
 
   const results = await db
     .select({

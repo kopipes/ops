@@ -25,7 +25,7 @@ export default async function TemplatesPage() {
   const db = getDb();
   const templates = await listTemplates(db, session.user, { includeInactive: true });
 
-  const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true });
+  const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true, workspaceOnly: true });
   const projectRows =
     projectIds.length === 0
       ? []

@@ -26,6 +26,8 @@ export interface ProjectFacts {
   memberIds: string[];
   /** Members with role_in_project = 'lead'. */
   leadIds: string[];
+  /** Active members with read and export access. */
+  adminProjectIds: string[];
 }
 
 export type Phase = "opening" | "monitoring" | "closing";
@@ -52,6 +54,9 @@ export function sharesDivisionWithProject(u: ActingUser, p: ProjectFacts): boole
 }
 
 export const isMember = (u: ActingUser, p: ProjectFacts) => p.memberIds.includes(u.id);
+export const isAdminProject = (u: ActingUser, p: ProjectFacts) => p.adminProjectIds.includes(u.id);
+export const isReportOnlyProjectMember = (u: ActingUser, p: ProjectFacts) => !isGlobalViewer(u) && isAdminProject(u, p);
+export const isOperationalMember = (u: ActingUser, p: ProjectFacts) => isMember(u, p) && !isAdminProject(u, p);
 export const isLead = (u: ActingUser, p: ProjectFacts) => p.leadIds.includes(u.id);
 
 /**
@@ -63,6 +68,11 @@ export function canViewProject(u: ActingUser, p: ProjectFacts): boolean {
   return isMember(u, p);
 }
 
+/** Workspace members can see setup and issue details in addition to reports. */
+export function canViewProjectWorkspace(u: ActingUser, p: ProjectFacts): boolean {
+  return canViewProject(u, p) && !isReportOnlyProjectMember(u, p);
+}
+
 // ---------------------------------------------------------------------------
 // Management (§2.2, §2.3)
 // ---------------------------------------------------------------------------
@@ -72,7 +82,7 @@ export function canManageProject(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u)) return true;
   // Management requires active membership and an owner-division match.
-  return isMember(u, p) && isManager(u) && u.divisionIds.includes(p.ownerDivisionId);
+  return isOperationalMember(u, p) && isManager(u) && u.divisionIds.includes(p.ownerDivisionId);
 }
 
 /** §2.3: create project — admin, or manager (scoped to their division at creation time). */
@@ -90,7 +100,7 @@ export const canAssignMembers = canManageProject;
 
 /** Manager of the project's division (any division match counts for filling reports). */
 export function isManagerOfProjectDivision(u: ActingUser, p: ProjectFacts): boolean {
-  return isMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
+  return isOperationalMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
 }
 
 /**
@@ -101,7 +111,7 @@ export function canSubmitMonitoring(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u)) return true;
   if (isManagerOfProjectDivision(u, p)) return true;
-  return isMember(u, p);
+  return isOperationalMember(u, p);
 }
 
 /**
@@ -117,7 +127,7 @@ export function canSubmitOpeningClosing(
   if (!u.isActive) return false;
   if (isAdmin(u)) return true;
   if (isManagerOfProjectDivision(u, p)) return true;
-  if (assignedUserId && u.id === assignedUserId && isMember(u, p)) return true;
+  if (assignedUserId && u.id === assignedUserId && isOperationalMember(u, p)) return true;
   return isLead(u, p);
 }
 
@@ -141,7 +151,7 @@ export const canCreateIssue = canSubmitMonitoring;
 export function canUpdateIssueStatus(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u) || isManagerOfProjectDivision(u, p)) return true;
-  return isMember(u, p);
+  return isOperationalMember(u, p);
 }
 
 /**
@@ -171,8 +181,7 @@ export function canSetIssueStatus(
 /** Mark day as reviewed + comment. Corporate may review but not edit (§2.3). */
 export function canReviewDay(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
-  if (isAdmin(u) || isCorporate(u)) return true;
-  return isManagerOfProjectDivision(u, p);
+  return isGlobalViewer(u) || isManagerOfProjectDivision(u, p);
 }
 
 /**
@@ -183,7 +192,7 @@ export const canUnreviewDay = canReviewDay;
 export function canExportPdf(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isAdmin(u) || isCorporate(u)) return true;
-  return isMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
+  return isAdminProject(u, p) || isManagerOfProjectDivision(u, p);
 }
 
 /**
@@ -236,6 +245,7 @@ export function canEditReport(
   if (facts.deletedAt !== null) return false;
   if (!canViewProject(u, p)) return false;
   if (isAdmin(u)) return true;
+  if (isAdminProject(u, p)) return false;
   if (isManagerOfProjectDivision(u, p)) return true;
   if (facts.submittedBy !== u.id) return false;
   if (facts.status === "draft") return facts.deletedAt === null;

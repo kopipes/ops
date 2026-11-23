@@ -26,7 +26,7 @@ export default async function IssuesPage({
   const activeProjectsOnly = active === "1";
   const db = getDb();
 
-  const ids = await visibleProjectIds(db, session.user);
+  const ids = await visibleProjectIds(db, session.user, { workspaceOnly: true });
   const validStatus = !activeOnly && ISSUE_STATUSES.includes(status as IssueStatus) ? (status as IssueStatus) : undefined;
   const validSeverity = SEVERITIES.includes(severity as Severity) ? (severity as Severity) : undefined;
 

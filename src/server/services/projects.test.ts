@@ -5,7 +5,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/server/db/schema";
-import type { ActingUser } from "@/server/permissions";
+import { canEditReport, canExportPdf, canManageProject, canSetIssueStatus, canSubmitPhase, type ActingUser } from "@/server/permissions";
 import {
   autoCompleteExpiredProjects,
   createProject,
@@ -25,9 +25,12 @@ import {
 } from "./project-checklist";
 import { addMember, listMemberCandidates, listMembers, removeMember, setMemberRole, setMembers } from "./members";
 import type { ProjectInput } from "@/lib/schemas";
-import { loadProjectFacts, visibleProjectIds } from "@/server/visibility";
-import { getDayDetail } from "./reports-review";
+import { adminProjectReportIds, loadProjectFacts, visibleProjectIds } from "@/server/visibility";
+import { getDayDetail, markDayReviewed } from "./reports-review";
 import { getEditableReport } from "./report-edits";
+import { checklistEditVersion, editProjectChecklist, listProjectChecklistHistory } from "./project-checklist-editor";
+import { submitReport } from "./reports";
+import { editDeadline, zonedToUtc } from "@/lib/datetime";
 
 const MIGRATIONS = resolve(process.cwd(), "src/server/db/migrations");
 
@@ -840,4 +843,135 @@ describe("duplicate snapshot rows (regression)", () => {
     const all = await listProjectChecklist(db, projectId, { includeInactive: true });
     expect(all.find((r) => r.id === "dup-frozen")).toBeDefined();
   });
+});
+
+
+describe("editing a project checklist in use", () => {
+  const point = {
+    id: null, phase: "opening" as const, categoryName: "Umum", description: null,
+    isRequired: true, requiresPhoto: false,
+  };
+
+  it("version-controls edits and removals without changing submitted reports", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const [day] = await listProjectDays(db, projectId);
+    const observedAt = zonedToUtc(day.date, "08:00", "Asia/Jakarta");
+    editProjectChecklist(db, mgr, projectId, {
+      version: checklistEditVersion([]),
+      rows: [{ ...point, label: "Periksa lampu" }, { ...point, label: "Periksa pintu" }, { ...point, label: "Periksa suara" }],
+    });
+    const original = await listProjectChecklist(db, projectId);
+    const input = {
+      projectId, projectDayId: day.id, phase: "opening" as const,
+      clientSubmissionId: "original", observedAt, photoIds: [], notes: null,
+      results: original.map(({ id }) => ({ projectChecklistItemId: id, result: "ok" as const, note: null, photoIds: [] })),
+    };
+    const report = await submitReport(db, sqlite, mgr, input);
+    expect(report.ok).toBe(true);
+    if (!report.ok) throw new Error(report.message);
+
+    const version = checklistEditVersion(original);
+    editProjectChecklist(db, mgr, projectId, {
+      version,
+      rows: [
+        original[2],
+        { ...original[0], label: "Periksa lampu darurat", requiresPhoto: true },
+        { ...point, label: "Periksa ventilasi" },
+      ],
+    });
+
+    const active = await listProjectChecklist(db, projectId);
+    expect(active.map((row) => row.label)).toEqual(["Periksa suara", "Periksa lampu darurat", "Periksa ventilasi"]);
+    const oldReport = await getEditableReport(db, mgr, report.reportId);
+    expect(oldReport?.report.results.map(({ label, requiresPhoto }) => [label, requiresPhoto])).toEqual([
+      ["Periksa lampu", false], ["Periksa pintu", false], ["Periksa suara", false],
+    ]);
+    expect(listProjectChecklistHistory(db, projectId)).toHaveLength(2);
+    expect(listProjectChecklistHistory(db, projectId)[0]).toMatchObject({ editorName: "Mgr" });
+    expect(() => editProjectChecklist(db, mgr, projectId, { version, rows: [] })).toThrow("Checklist sudah diubah");
+    expect(await submitReport(db, sqlite, mgr, { ...input, clientSubmissionId: "old-open-form" }))
+      .toMatchObject({ ok: false, reason: "validation", message: expect.stringContaining("Checklist sudah berubah") });
+    expect(await submitReport(db, sqlite, mgr, input)).toMatchObject({ ok: true, idempotent: true });
+    const followUp = await submitReport(db, sqlite, mgr, {
+      ...input, clientSubmissionId: "new-form", observedAt: observedAt + 60_000,
+      results: [{ projectChecklistItemId: active[0].id, result: "not_ok", note: "Gangguan", photoIds: [] },
+        { projectChecklistItemId: active[2].id, result: "ok", note: null, photoIds: [] }],
+    });
+    expect(followUp).toMatchObject({ ok: false, message: expect.stringContaining("lampu darurat") });
+
+  });
+
+  it("rejects stale forms even when changes only involve an unanswered optional item", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const [day] = await listProjectDays(db, projectId);
+    const input = {
+      projectId, projectDayId: day.id, phase: "opening" as const,
+      clientSubmissionId: "stale-form", observedAt: zonedToUtc(day.date, "08:00", "Asia/Jakarta"),
+      photoIds: [], notes: null, results: [],
+    };
+    const empty = checklistEditVersion([]);
+    editProjectChecklist(db, mgr, projectId, {
+      version: empty, rows: [{ ...point, isRequired: false, label: "Poin opsional" }],
+    });
+    expect(await submitReport(db, sqlite, mgr, { ...input, checklistVersion: empty })).toMatchObject({
+      ok: false, message: expect.stringContaining("Checklist sudah berubah"),
+    });
+    const [optional] = await listProjectChecklist(db, projectId);
+    const beforeEdit = checklistEditVersion([optional]);
+    editProjectChecklist(db, mgr, projectId, {
+      version: beforeEdit, rows: [{ ...optional, description: "Petunjuk baru" }],
+    });
+    expect(await submitReport(db, sqlite, mgr, { ...input, checklistVersion: beforeEdit })).toMatchObject({
+      ok: false, message: expect.stringContaining("Checklist sudah berubah"),
+    });
+  });
+
+  it("checks current management access and rejects checklist IDs from another project", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const { projectId: otherId } = await createProject(db, admin, projectInput({ code: "OTHER" }));
+    const empty = checklistEditVersion([]);
+    editProjectChecklist(db, admin, otherId, { version: empty, rows: [{ ...point, label: "Poin project lain" }] });
+    const otherRows = await listProjectChecklist(db, otherId);
+    expect(() => editProjectChecklist(db, mgr, projectId, { version: empty, rows: otherRows })).toThrow("tidak valid");
+    await addMember(db, mgr, projectId, crew.id, "lead");
+    expect(() => editProjectChecklist(db, crew, projectId, { version: empty, rows: [] })).toThrow("Tidak punya akses");
+    await removeMember(db, admin, projectId, mgr.id);
+    expect(() => editProjectChecklist(db, mgr, projectId, { version: empty, rows: [] })).toThrow("Tidak punya akses");
+    expect(await listProjectChecklist(db, projectId)).toEqual([]);
+    expect(listProjectChecklistHistory(db, projectId)).toEqual([]);
+  });
+});
+
+
+it("grants Admin Project scoped PDF export and rejects project writes even for a Manager", async () => {
+  const { projectId } = await createProject(db, admin, projectInput());
+  const { projectId: otherId } = await createProject(db, admin, projectInput({ code: "OTHER" }));
+  const [day] = await listProjectDays(db, projectId);
+  await addMember(db, admin, projectId, mgr.id, "admin_project");
+  await addMember(db, admin, otherId, mgr.id, "crew");
+  expect(adminProjectReportIds(db, mgr)).toEqual([projectId]);
+  expect(await visibleProjectIds(db, mgr, { workspaceOnly: true })).toEqual([otherId]);
+  const facts = (await loadProjectFacts(db, [projectId])).get(projectId)!;
+  expect(canExportPdf(mgr, facts)).toBe(true);
+  expect(canManageProject(mgr, facts)).toBe(false);
+  expect(canSetIssueStatus(mgr, facts, "open")).toBe(false);
+  expect(canSubmitPhase(mgr, facts, "opening", mgr.id)).toBe(false);
+  expect(canEditReport(mgr, facts, {
+    submittedBy: mgr.id, deletedAt: null, status: "submitted", dayReviewedAt: null,
+    dayDate: day.date, timezone: "Asia/Jakarta",
+  }, now, editDeadline)).toBe(false);
+  expect(await getDayDetail(db, mgr, projectId, day.date)).toMatchObject({
+    canExport: true, canReview: false, canCreateIssue: false, canViewIssues: false,
+  });
+  await expect(markDayReviewed(db, mgr, day.id)).rejects.toThrow("tidak berhak");
+  await expect(addMember(db, mgr, projectId, crew.id, "lead")).rejects.toThrow("Tidak punya akses");
+  expect(await submitReport(db, sqlite, mgr, {
+    projectId, projectDayId: day.id, phase: "monitoring",
+    clientSubmissionId: "report-only-attempt", notes: "No write allowed",
+    observedAt: zonedToUtc(day.date, "08:00", "Asia/Jakarta"), photoIds: [], results: [],
+  })).toMatchObject({ ok: false, reason: "forbidden" });
+
+  await removeMember(db, admin, projectId, mgr.id);
+  expect(adminProjectReportIds(db, mgr)).toEqual([]);
+  expect(await getDayDetail(db, mgr, projectId, day.date)).toBeNull();
 });

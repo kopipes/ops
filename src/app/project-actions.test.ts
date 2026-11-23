@@ -7,7 +7,7 @@ vi.mock('@/server/services/projects',async original=>({...await original<object>
 vi.mock('@/server/services/project-checklist',async original=>({...await original<object>(),buildChecklistFromProject:f.copy,buildChecklistFromTemplates:f.templates}));
 import {resolveWizardChecklist} from './project-actions';
 const manager:ActingUser={id:'manager',role:'manager',divisionIds:['division'],isActive:true};
-const facts=(members:string[]):ProjectFacts=>({id:'source',status:'active',ownerDivisionId:'division',divisionIds:[],memberIds:members,leadIds:[]});
+const facts=(members:string[]):ProjectFacts=>({id:'source',status:'active',ownerDivisionId:'division',divisionIds:[],memberIds:members,leadIds:[],adminProjectIds:[]});
 function request(){const data=new FormData();data.set('checklistSource','project');data.set('sourceProjectId','source');return data;}
 beforeEach(()=>{vi.resetAllMocks();f.session.mockResolvedValue({user:manager});f.copy.mockResolvedValue([{sourceItemId:'item',label:'Private source',phase:'opening'}]);});
 describe('checklist copy respects project visibility on the server',()=>{

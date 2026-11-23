@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ReportForm } from "@/components/crew/ReportForm";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
+import { isReportOnlyProjectMember } from "@/server/permissions";
+import { checklistEditVersion } from "@/server/services/project-checklist-editor";
 import { loadDayPageContext } from "@/server/services/day-context";
 import { listPhaseReports, type Phase } from "@/server/services/reports";
 import { formatReportTimestamp } from "@/lib/datetime";
@@ -37,6 +39,7 @@ export async function CrewReportPage({
     phase,
   });
   if (!ctx) notFound();
+  if (isReportOnlyProjectMember(session.user, ctx.facts)) redirect(`/reports/day/${ctx.day.id}`);
 
   const history = await listPhaseReports(db, ctx.day.id, phase);
   const readOnly = !ctx.canSubmit;
@@ -101,6 +104,7 @@ export async function CrewReportPage({
         defaultObservedTime={new Intl.DateTimeFormat("en-GB",{timeZone:ctx.project.timezone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date())}
         timezone={ctx.project.timezone}
         items={ctx.items}
+        checklistVersion={checklistEditVersion(ctx.items)}
         readOnly={readOnly}
         readOnlyReason={readOnlyReason}
         existing={

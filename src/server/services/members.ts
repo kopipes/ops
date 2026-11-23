@@ -1,3 +1,4 @@
+import type { ProjectRole } from "@/lib/project-roles";
 /**
  * Project members (§6.1 no.4, §4.6).
  *
@@ -19,7 +20,7 @@ export interface MemberRow {
   userId: string;
   name: string;
   email: string;
-  roleInProject: "lead" | "crew";
+  roleInProject: ProjectRole;
   isActive: boolean;
   divisionIds: string[];
   /** True when the member's division does not match any project division. */
@@ -132,7 +133,7 @@ export async function addMember(
   user: ActingUser,
   projectId: string,
   targetUserId: string,
-  roleInProject: "lead" | "crew",
+  roleInProject: ProjectRole,
 ): Promise<void> {
   await assertCanAssign(db, user, projectId);
 
@@ -193,7 +194,7 @@ export async function setMemberRole(
   user: ActingUser,
   projectId: string,
   targetUserId: string,
-  roleInProject: "lead" | "crew",
+  roleInProject: ProjectRole,
 ): Promise<void> {
   await assertCanAssign(db, user, projectId);
 
@@ -223,7 +224,7 @@ export async function setMembers(
   db: DB,
   user: ActingUser,
   projectId: string,
-  members: { userId: string; roleInProject: "lead" | "crew" }[],
+  members: { userId: string; roleInProject: ProjectRole }[],
 ): Promise<void> {
   await assertCanAssign(db, user, projectId);
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { PROJECT_ROLES, projectRoleLabel, type ProjectRole } from "@/lib/project-roles";
+
 import { useActionState, useMemo, useState } from "react";
 import type { ProjectActionState } from "@/app/project-actions";
 import { PHASES, phaseLabel } from "@/lib/schemas";
@@ -112,7 +114,7 @@ export function ProjectWizard({
   const [customRows, setCustomRows] = useState<ChecklistRow[]>([]);
   const [customLabel, setCustomLabel] = useState("");
   const [customPhase, setCustomPhase] = useState<(typeof PHASES)[number]>("opening");
-  const [selectedMembers, setSelectedMembers] = useState<Record<string, "lead" | "crew">>({});
+  const [selectedMembers, setSelectedMembers] = useState<Record<string, ProjectRole>>({});
   const [memberSearch, setMemberSearch] = useState("");
   const [startDate, setStartDate] = useState(todayIso);
   const [endDate, setEndDate] = useState(todayIso);
@@ -604,14 +606,13 @@ export function ProjectWizard({
                         onChange={(e) =>
                           setSelectedMembers((prev) => ({
                             ...prev,
-                            [m.userId]: e.target.value as "lead" | "crew",
+                            [m.userId]: e.target.value as ProjectRole,
                           }))
                         }
                         className="min-h-[36px] rounded-md border px-2 text-sm"
                         style={inputStyle}
                       >
-                        <option value="crew">Crew</option>
-                        <option value="lead">Head Crew (lead)</option>
+                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
                       </select>
                     </div>
                   ) : null}

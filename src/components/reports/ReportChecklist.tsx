@@ -35,7 +35,7 @@ export function ReportChecklist({ reportId, phase, results, issueContext, canRev
             {result.result === "not_ok" && issueContext ? <a href={`/issues/new?${new URLSearchParams({...issueContext,reportId,checkResultId:result.id,title:result.label,description:result.note??""}).toString()}`} className="mt-2 inline-flex min-h-tap items-center rounded-lg border border-red-700/20 px-3 text-xs text-red-800">Jadikan Issue</a> : null}
             {result.note ? <p className="mt-1 whitespace-pre-wrap text-xs" style={{ color: "var(--muted)" }}>{result.note}</p> : null}
             <PhotoGallery small photos={result.photoIds.map((id,index)=>({id,label:`${result.label} — foto ${index+1}`}))}/>
-            <ReviewFeedback reviews={result.reviews} contentHash={result.contentHash} timezone={timezone} editHref={canEdit&&issueContext?`/reports/edit/${reportId}#edit-point-${result.id}`:undefined}/>
+            <ReviewFeedback reviews={result.reviews} contentHash={result.contentHash} timezone={timezone} editHref={canEdit?`/reports/edit/${reportId}#edit-point-${result.id}`:undefined}/>
             {canReview?<PointReviewForm key={result.contentHash} checkResultId={result.id} contentHash={result.contentHash}/>:null}
           </li>;
         })}

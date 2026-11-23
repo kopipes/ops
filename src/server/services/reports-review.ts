@@ -30,9 +30,12 @@ import {
 import type * as schema from "@/server/db/schema";
 import {
   canEditReport,
+  canExportPdf,
+  canCreateIssue,
   canReviewDay,
   canUnreviewDay,
   canViewProject,
+  canViewProjectWorkspace,
   type ActingUser,
 } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "./checklist-items";
@@ -259,10 +262,11 @@ export async function getDailySummary(
     .select({
       id: reportCheckResults.id,
       reportId: reportCheckResults.reportId,
-      itemId: reportCheckResults.projectChecklistItemId,
+      itemId: sql<string>`coalesce(${projectChecklistItems.seriesId}, ${projectChecklistItems.id})`,
       result: reportCheckResults.result,
     })
     .from(reportCheckResults)
+    .innerJoin(projectChecklistItems, eq(projectChecklistItems.id, reportCheckResults.projectChecklistItemId))
     .where(inArray(reportCheckResults.reportId, reportRows.map((r) => r.id).concat("__none__")));
 
   const issueRows = await db
@@ -418,6 +422,9 @@ export interface DayDetail {
   gallery: GalleryPhoto[];
   comments: { id: string; body: string; authorName: string; authorRole: string; createdAt: number }[];
   canReview: boolean;
+  canExport: boolean;
+  canCreateIssue: boolean;
+  canViewIssues: boolean;
   canUnreview: boolean;
 }
 
@@ -521,6 +528,7 @@ export async function getDayDetail(
             id: reportCheckResults.id,
             reportId: reportCheckResults.reportId,
             itemId: reportCheckResults.projectChecklistItemId,
+            itemSeriesId: sql<string>`coalesce(${projectChecklistItems.seriesId}, ${projectChecklistItems.id})`,
             result: reportCheckResults.result,
             note: reportCheckResults.note,
             label: projectChecklistItems.label,
@@ -761,7 +769,7 @@ export async function getDayDetail(
     .orderBy(asc(dayComments.createdAt));
 
   const latest = new Map<string, typeof results[number]>();
-  for(const report of [...dayReports].sort((a,b)=>a.observedAt-b.observedAt||(a.submittedAt??0)-(b.submittedAt??0)||a.id.localeCompare(b.id))) for(const result of results.filter(r=>r.reportId===report.id))latest.set(result.itemId,result);
+  for(const report of [...dayReports].sort((a,b)=>a.observedAt-b.observedAt||(a.submittedAt??0)-(b.submittedAt??0)||a.id.localeCompare(b.id))) for(const result of results.filter(r=>r.reportId===report.id))latest.set(result.itemSeriesId,result);
   const currentResults=[...latest.values()];
   const answeredCount=currentResults.length;
   const okCount=currentResults.filter(r=>r.result==="ok").length;
@@ -815,6 +823,9 @@ export async function getDayDetail(
       createdAt: c.createdAt,
     })),
     canReview: canReviewDay(user, facts),
+    canExport: canExportPdf(user, facts),
+    canCreateIssue: canCreateIssue(user, facts),
+    canViewIssues: canViewProjectWorkspace(user, facts),
     canUnreview: canUnreviewDay(user, facts),
   };
 }

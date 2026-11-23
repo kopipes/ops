@@ -101,6 +101,10 @@ sudo bash /opt/ops/current/deploy/rollback.sh PREVIOUS_40_CHARACTER_SHA
 sudo bash /opt/ops/current/deploy/rollback.sh PREVIOUS_40_CHARACTER_SHA /var/backups/ops/MATCHING_BACKUP/ops.db
 ```
 
+Releases that predate the Admin Project role cannot safely use a database with
+active Admin Project memberships. Run the rollback script from the current
+release so it can check the target and the database before starting older code.
+
 The script backs up the current DB first. It stops/restarts only Ops; it does not
 restart databases, change shared ports, or restore whole-host config snapshots.
 If the requested rollback fails its health check or is interrupted during stop,

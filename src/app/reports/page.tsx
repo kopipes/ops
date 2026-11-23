@@ -5,7 +5,7 @@ import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { divisions, projects } from "@/server/db/schema";
 import { getDailySummary } from "@/server/services/reports-review";
-import { visibleProjectIds } from "@/server/visibility";
+import { adminProjectReportIds, visibleProjectIds } from "@/server/visibility";
 import { isAdmin, isCorporate, isManager } from "@/server/permissions";
 import { getGlobalSettings } from "@/server/services/app-settings";
 import { toLocalDate } from "@/lib/datetime";
@@ -52,8 +52,10 @@ export default async function ReportsPage({
   searchParams: Promise<{ from?: string; to?: string; status?: string; projectId?: string; divisionId?: string }>;
 }) {
   const session = await requireUser();
-  // §12: /reports is manager, corporate, admin.
-  if (!isAdmin(session.user) && !isManager(session.user) && !isCorporate(session.user)) {
+  const db = getDb();
+  const canSeeAllVisibleReports = isAdmin(session.user) || isManager(session.user) || isCorporate(session.user);
+  const assignedReportIds = canSeeAllVisibleReports ? [] : adminProjectReportIds(db, session.user);
+  if (!canSeeAllVisibleReports && assignedReportIds.length === 0) {
     return (
       <AppShell>
         <h1 className="mb-4 text-xl font-semibold">Report</h1>
@@ -61,7 +63,7 @@ export default async function ReportsPage({
           className="rounded-xl border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
         >
-          Halaman report hanya untuk Manager, Corporate, dan Admin.
+          Akun ini belum memiliki akses ke ringkasan report.
         </p>
       </AppShell>
     );
@@ -73,7 +75,7 @@ export default async function ReportsPage({
    * same clock the project wizard uses for its date defaults. Using UTC here
    * showed an empty list between 17:00–24:00 UTC for teams working on WIB.
    */
-  const settings = await getGlobalSettings(getDb());
+  const settings = await getGlobalSettings(db);
   const today = toLocalDate(Date.now(), settings.defaultTimezone);
   const from = params.from ?? today;
   const to = params.to ?? today;
@@ -81,8 +83,7 @@ export default async function ReportsPage({
     ? (params.status as "incomplete" | "critical" | "unreviewed")
     : undefined;
 
-  const db = getDb();
-  const ids = await visibleProjectIds(db, session.user);
+  const ids = canSeeAllVisibleReports ? await visibleProjectIds(db, session.user) : assignedReportIds;
   const rows = await getDailySummary(db, ids, {
     from,
     to,

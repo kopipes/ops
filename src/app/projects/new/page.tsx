@@ -65,7 +65,7 @@ export default async function NewProjectPage({
   }
 
   // Candidate projects for "copy from previous project".
-  const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true });
+  const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true, workspaceOnly: true });
   const projectOptions =
     projectIds.length === 0
       ? []

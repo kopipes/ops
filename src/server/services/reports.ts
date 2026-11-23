@@ -5,7 +5,7 @@
  * one transaction. `better-sqlite3` transactions are SYNCHRONOUS — an `async`
  * callback would silently commit outside the transaction — so this module does
  * its multi-statement writes through `raw.transaction(...)` with no `await`
- * inside the transactional body. All validation happens before the transaction.
+ * inside the transactional body. Mutable state is checked again in the transaction.
  */
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -31,6 +31,7 @@ import {
 } from "@/server/permissions";
 import { editDeadline } from "@/lib/datetime";
 import { ForbiddenError, ValidationError } from "./checklist-items";
+import { checklistEditVersion } from "./project-checklist-editor";
 import { loadFacts } from "./projects";
 import { getGlobalSettings, isWindowEnabled, type GlobalSettings } from "./app-settings";
 
@@ -53,6 +54,7 @@ export interface SubmitInput {
   projectDayId: string;
   phase: Phase;
   clientSubmissionId: string;
+  checklistVersion?: string;
   notes: string | null;
   /**
    * Narrative shown after the checklist for opening/closing
@@ -93,8 +95,8 @@ export function validateResults(
   const answered = new Map(results.map((r) => [r.projectChecklistItemId, r]));
 
   for (const id of answered.keys()) {
-    if (!byId.has(id)) {
-      return { ok: false, message: "Ada item checklist yang bukan milik project ini" };
+    if (!byId.get(id)?.isActive) {
+      return { ok: false, message: "Checklist sudah berubah. Muat ulang halaman dan periksa kembali isianmu." };
     }
   }
 
@@ -141,25 +143,7 @@ export async function loadSubmitContext(db: DB, input: SubmitInput) {
 
   const facts = await loadFacts(db, input.projectId);
 
-  const checklist = await db
-    .select({
-      id: projectChecklistItems.id,
-      isRequired: projectChecklistItems.isRequired,
-      requiresPhoto: projectChecklistItems.requiresPhoto,
-      label: projectChecklistItems.label,
-      isActive: projectChecklistItems.isActive,
-      phase: projectChecklistItems.phase,
-    })
-    .from(projectChecklistItems)
-    .where(
-      and(
-        eq(projectChecklistItems.projectId, input.projectId),
-        eq(projectChecklistItems.phase, input.phase),
-      ),
-    )
-    .orderBy(asc(projectChecklistItems.sortOrder));
-
-  return { project, day, facts, checklist };
+  return { project, day, facts };
 }
 
 /**
@@ -209,11 +193,6 @@ export async function submitReport(
     if(!photo)return {ok:false,reason:"validation",message:"Foto tidak tersedia untuk laporan ini. Unggah foto baru pada laporan yang benar."};
   }
 
-  const validation = validateResults(ctx.checklist, input.results);
-  if (!validation.ok) {
-    return { ok: false, reason: "validation", message: validation.message };
-  }
-
   const now = Date.now();
   const submittedAt = now;
 
@@ -241,12 +220,33 @@ export async function submitReport(
   // ---------------------------------------------------------------------
   // SYNCHRONOUS transaction — no await between BEGIN and COMMIT.
   // ---------------------------------------------------------------------
+  let checklistError: string | undefined;
   const tx = raw.transaction(() => {
     const freshDay=raw.prepare('select reviewed_at from project_days where id=?').get(input.projectDayId) as {reviewed_at:number|null}|undefined;
     if(!freshDay) throw new ForbiddenError("Hari tidak ditemukan");
     const current=currentProjectAccess(db,user,input.projectId);
     const assignment=raw.prepare("select assigned_user_id from project_days where id=?").get(input.projectDayId) as {assigned_user_id:string|null};
     if(!canSubmitPhase(current.user,current.facts,input.phase,assignment.assigned_user_id))throw new ForbiddenError("Akses project sudah berubah");
+    const checklist = db.select({
+      id: projectChecklistItems.id,
+      isRequired: projectChecklistItems.isRequired,
+      requiresPhoto: projectChecklistItems.requiresPhoto,
+      label: projectChecklistItems.label,
+      isActive: projectChecklistItems.isActive,
+    }).from(projectChecklistItems).where(and(
+      eq(projectChecklistItems.projectId, input.projectId),
+      eq(projectChecklistItems.phase, input.phase),
+      eq(projectChecklistItems.isActive, true),
+    )).orderBy(asc(projectChecklistItems.sortOrder)).all();
+    if (input.checklistVersion !== undefined && checklistEditVersion(checklist) !== input.checklistVersion) {
+      checklistError = "Checklist sudah berubah. Muat ulang halaman dan periksa kembali isianmu.";
+      return;
+    }
+    const validation = validateResults(checklist, input.results);
+    if (!validation.ok) {
+      checklistError = validation.message;
+      return;
+    }
     raw
       .prepare(
         `insert into reports (id, project_id, project_day_id, phase, submitted_by,
@@ -342,6 +342,7 @@ export async function submitReport(
     throw err;
   }
 
+  if (checklistError) return { ok: false, reason: "validation", message: checklistError };
   return { ok: true, reportId, isLate, idempotent: false };
 }
 

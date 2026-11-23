@@ -7,12 +7,12 @@
  * and the auth check runs first.
  */
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/server/db";
-import { photos } from "@/server/db/schema";
+import { issues, photos, reportCheckResults, reports } from "@/server/db/schema";
 import { currentSession } from "@/server/auth/current-user";
 import { readPhotoFile } from "@/server/services/photos";
-import { canViewProject } from "@/server/permissions";
+import { canViewProject, isReportOnlyProjectMember } from "@/server/permissions";
 import { loadFacts } from "@/server/services/projects";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function GET(
 
   const db = getDb();
   const row = await db
-    .select({ projectId: photos.projectId })
+    .select({ projectId: photos.projectId, ownerId: photos.ownerId, ownerType: photos.ownerType })
     .from(photos)
     .where(eq(photos.id, id))
     .get();
@@ -40,6 +40,18 @@ export async function GET(
     const facts = await loadFacts(db, row.projectId);
     if (!canViewProject(session.user, facts)) {
       return new NextResponse("Forbidden", { status: 403 });
+    }
+    if (isReportOnlyProjectMember(session.user, facts)) {
+      const reportId = row.ownerType === "report" ? row.ownerId : row.ownerType === "check_result"
+        ? db.select({ id: reportCheckResults.reportId }).from(reportCheckResults).where(eq(reportCheckResults.id, row.ownerId)).get()?.id
+        : undefined;
+      const attachedToReport = reportId && db.select({ id: reports.id }).from(reports).where(and(
+        eq(reports.id, reportId), eq(reports.projectId, row.projectId), eq(reports.status, "submitted"), isNull(reports.deletedAt),
+      )).get();
+      const attachedToIssue = row.ownerType === "issue" && db.select({ id: issues.id }).from(issues).where(and(
+        eq(issues.id, row.ownerId), eq(issues.projectId, row.projectId), isNull(issues.deletedAt),
+      )).get();
+      if (!attachedToReport && !attachedToIssue) return new NextResponse("Forbidden", { status: 403 });
     }
   } catch {
     return new NextResponse("Forbidden", { status: 403 });

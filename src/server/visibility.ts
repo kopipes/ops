@@ -23,11 +23,12 @@ type DB = BetterSQLite3Database<typeof schema>;
  * Predicate: project row is visible to this user.
  * Admin/Corporate see all; every other role requires active membership.
  */
-export function visibleProjectPredicate(u: ActingUser): SQL | undefined {
+export function visibleProjectPredicate(u: ActingUser, workspaceOnly = false): SQL | undefined {
   if (u.isActive && isGlobalViewer(u)) return undefined; // no filter
   if (!u.isActive) return sql`0 = 1`;
   return sql`EXISTS (SELECT 1 FROM ${projectMembers} pm
-    WHERE pm.project_id = ${projects.id} AND pm.user_id = ${u.id} AND pm.is_active = 1)`;
+    WHERE pm.project_id = ${projects.id} AND pm.user_id = ${u.id} AND pm.is_active = 1
+      ${workspaceOnly ? sql`AND pm.role_in_project <> 'admin_project'` : undefined})`;
 }
 
 /**
@@ -37,9 +38,9 @@ export function visibleProjectPredicate(u: ActingUser): SQL | undefined {
 export async function visibleProjectIds(
   db: DB,
   u: ActingUser,
-  opts: { includeArchived?: boolean; includeDeleted?: boolean } = {},
+  opts: { includeArchived?: boolean; includeDeleted?: boolean; workspaceOnly?: boolean } = {},
 ): Promise<string[]> {
-  const filters: (SQL | undefined)[] = [visibleProjectPredicate(u)];
+  const filters: (SQL | undefined)[] = [visibleProjectPredicate(u, opts.workspaceOnly)];
   if (!opts.includeArchived) filters.push(sql`${projects.status} <> 'archived'`);
   if (!opts.includeDeleted) filters.push(isNull(projects.deletedAt));
 
@@ -90,6 +91,7 @@ export async function loadProjectFacts(
       divisionIds: [],
       memberIds: [],
       leadIds: [],
+      adminProjectIds: [],
     });
   }
   for (const d of divs) out.get(d.projectId)?.divisionIds.push(d.divisionId);
@@ -98,6 +100,18 @@ export async function loadProjectFacts(
     if (!f) continue;
     f.memberIds.push(m.userId);
     if (m.role === "lead") f.leadIds.push(m.userId);
+    if (m.role === "admin_project") f.adminProjectIds.push(m.userId);
   }
   return out;
+}
+
+
+/** Report menu for accounts whose report access comes from a project role. */
+export function adminProjectReportIds(db: DB, user: ActingUser): string[] {
+  if (!user.isActive) return [];
+  return db.select({ id: projects.id }).from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.isActive, true),
+      eq(projectMembers.roleInProject, "admin_project"), isNull(projects.deletedAt)))
+    .all().map((row) => row.id);
 }

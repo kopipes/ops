@@ -2,8 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "@/server/db/schema";
-import { canReviewDay, canViewProject, type ActingUser, type ProjectFacts } from "@/server/permissions";
+import { canReviewDay, canViewProject, type ActingUser } from "@/server/permissions";
 import { visibleProjectPredicate } from "@/server/visibility";
+import { currentProjectAccess } from "./project-access";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 
 type DB = BetterSQLite3Database<typeof schema>;
@@ -28,15 +29,12 @@ export function addPointReview(db:DB,actor:ActingUser,input:{id:string;checkResu
   if(note.length>2000)throw new ValidationError("Komentar maksimal 2000 karakter");
   if(input.verdict==="not_ok" && (!Object.hasOwn(REVIEW_ACTION_LABELS,input.action)||!note))throw new ValidationError("Pilih tindak lanjut dan isi komentar perbaikan");
   return db.transaction(tx=>{
-    const user=freshActor(tx,actor);
     const context=tx.select({result:schema.reportCheckResults,report:schema.reports,project:schema.projects})
       .from(schema.reportCheckResults).innerJoin(schema.reports,eq(schema.reports.id,schema.reportCheckResults.reportId))
       .innerJoin(schema.projects,eq(schema.projects.id,schema.reports.projectId))
       .where(and(eq(schema.reportCheckResults.id,input.checkResultId),isNull(schema.reports.deletedAt),isNull(schema.projects.deletedAt),eq(schema.reports.status,"submitted"))).get();
     if(!context)throw new ValidationError("Poin laporan tidak ditemukan");
-    const members=tx.select().from(schema.projectMembers).where(and(eq(schema.projectMembers.projectId,context.project.id),eq(schema.projectMembers.isActive,true))).all();
-    const divisions=tx.select().from(schema.projectDivisions).where(eq(schema.projectDivisions.projectId,context.project.id)).all();
-    const facts:ProjectFacts={id:context.project.id,status:context.project.status,ownerDivisionId:context.project.ownerDivisionId,divisionIds:divisions.map(d=>d.divisionId),memberIds:members.map(m=>m.userId),leadIds:members.filter(m=>m.roleInProject==="lead").map(m=>m.userId)};
+    const { user, facts } = currentProjectAccess(tx, actor, context.project.id);
     if(!canViewProject(user,facts)||!canReviewDay(user,facts))throw new ForbiddenError("Kamu tidak berhak mereview poin ini");
     const action=input.verdict==="not_ok"?input.action as ReviewAction:null;
     const prior=tx.select().from(schema.checkResultReviews).where(eq(schema.checkResultReviews.id,input.id)).get();

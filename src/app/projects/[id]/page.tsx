@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { ProjectChecklistEditor } from "@/components/project/ProjectChecklistEditor";
 import { DeleteProjectButton } from "@/components/project/DeleteProjectButton";
 import { ExportPdfForm } from "@/components/pdf/ExportPdfForm";
 import { exportProjectPdfAction } from "@/app/pdf-actions";
@@ -17,8 +18,11 @@ import {
 import { loadFacts, listActiveProjectDays } from "@/server/services/projects";
 import { listProjectChecklist } from "@/server/services/project-checklist";
 import { listMembers, listMemberCandidates } from "@/server/services/members";
-import { canDeleteProject, canExportPdf, canManageProject, canViewProject } from "@/server/permissions";
-import { toLocalDate } from "@/lib/datetime";
+import { canDeleteProject, canExportPdf, canManageProject, canSubmitPhase, canViewProject, isReportOnlyProjectMember } from "@/server/permissions";
+import { formatReportTimestamp, toLocalDate } from "@/lib/datetime";
+import { PROJECT_ROLES, projectRoleLabel } from "@/lib/project-roles";
+import { PHASES, phaseLabel } from "@/lib/schemas";
+import { checklistEditVersion, listProjectChecklistHistory } from "@/server/services/project-checklist-editor";
 import { getGlobalSettings, isWindowEnabled } from "@/server/services/app-settings";
 import {
   addMemberAction,
@@ -59,11 +63,11 @@ export default async function ProjectDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; edit?: string; saved?: string }>;
 }) {
   const session = await requireUser();
   const { id } = await params;
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, edit, saved } = await searchParams;
   const tab: Tab = (TABS as readonly string[]).includes(tabParam ?? "")
     ? (tabParam as Tab)
     : "today";
@@ -78,11 +82,33 @@ export default async function ProjectDetailPage({
 
   const canManage = canManageProject(session.user, facts);
   const canExport = canExportPdf(session.user, facts);
+  if (isReportOnlyProjectMember(session.user, facts)) {
+    const reportFilters = new URLSearchParams({ projectId: id, from: project.startDate, to: project.endDate });
+    return (
+      <AppShell contentWidth="form">
+        <h1>{project.name}</h1>
+        <p className="mb-4 text-sm text-[var(--muted)]">{project.code} · Admin Project</p>
+        <Link className="btn-primary mb-4" href={`/reports?${reportFilters}`}>Lihat laporan harian</Link>
+        <section className="surface-card p-4">
+          <h2 className="section-title mb-3">Rekap project</h2>
+          <ExportPdfForm
+            action={exportProjectPdfAction}
+            hidden={{ projectId: id }}
+            submitLabel="Export PDF rekap project"
+            showDateRange
+            defaultFrom={project.startDate}
+            defaultTo={project.endDate}
+            hint="Maksimal 31 hari per PDF."
+          />
+        </section>
+      </AppShell>
+    );
+  }
   const settings = await getGlobalSettings(db);
 
   const [days, checklist, members, ownerDivision] = await Promise.all([
     listActiveProjectDays(db, id),
-    listProjectChecklist(db, id),
+    tab === "checklist" ? listProjectChecklist(db, id) : [],
     listMembers(db, id),
     db
       .select({ name: divisions.name })
@@ -91,6 +117,8 @@ export default async function ProjectDetailPage({
       .get(),
   ]);
 
+  const editingChecklist = tab === "checklist" && canManage && edit === "1";
+  const checklistHistory = tab === "checklist" && canManage && !editingChecklist ? listProjectChecklistHistory(db, id) : [];
   const candidates = canManage ? await listMemberCandidates(db, id) : [];
   const today = toLocalDate(Date.now(), project.timezone);
   const todayDay = days.find((d) => d.date === today);
@@ -187,7 +215,8 @@ export default async function ProjectDetailPage({
                   const rows = dayReports.filter(
                     (r) => r.projectDayId === todayDay.id && r.phase === phase && r.status === "submitted",
                   );
-                  const submitted = phase === "monitoring" ? rows.length > 0 : rows.length > 0;
+                  const submitted = rows.length > 0;
+                  const canFill = canSubmitPhase(session.user, facts, phase, todayDay.assignedUserId);
                   const href = `/projects/${id}/days/${todayDay.date}/${phase}`;
                   const label =
                     phase === "monitoring"
@@ -204,23 +233,15 @@ export default async function ProjectDetailPage({
                           {label}
                           {isWindowEnabled(phase, settings) && rows.some((r) => r.isLate) ? " · terlambat" : ""}
                         </span>
-                        {phase === "monitoring" || !submitted ? (
-                          <a
-                            href={href}
-                            className="rounded-md border px-2 py-1 text-xs"
-                            style={{ borderColor: "var(--border)", color: "var(--accent)" }}
-                          >
+                        {canFill && (phase === "monitoring" || !submitted) ? (
+                          <Link href={href} className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--accent)]">
                             {submitted ? "+ Lagi" : "Isi"}
-                          </a>
-                        ) : (
-                          <a
-                            href={href}
-                            className="rounded-md border px-2 py-1 text-xs"
-                            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-                          >
+                          </Link>
+                        ) : submitted ? (
+                          <Link href={href} className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]">
                             Lihat
-                          </a>
-                        )}
+                          </Link>
+                        ) : null}
                       </span>
                     </li>
                   );
@@ -338,7 +359,7 @@ export default async function ProjectDetailPage({
                           }}
                         >
                           <option value="">Petugas: semua Head Crew</option>
-                          {members.map((m) => (
+                          {members.filter((m) => m.roleInProject !== "admin_project").map((m) => (
                             <option key={m.userId} value={m.userId}>
                               {m.name}
                             </option>
@@ -364,49 +385,75 @@ export default async function ProjectDetailPage({
       {/* ---------------- Checklist ---------------- */}
       {tab === "checklist" ? (
         <section>
-          <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>
-            {checklist.length} item aktif. Perubahan berlaku untuk laporan berikutnya; laporan yang
-            sudah submit tidak berubah (§5.3).
-          </p>
-          {(["opening", "monitoring", "closing"] as const).map((phase) => {
-            const rows = checklist.filter((c) => c.phase === phase);
-            if (rows.length === 0) return null;
-            return (
-              <div key={phase} className="mb-3">
-                <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
-                  {phase} ({rows.length})
-                </h2>
-                <ul className="flex flex-col gap-1">
-                  {rows.map((c) => (
-                    <li
-                      key={c.id}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-                    >
-                      <p>{c.label}</p>
-                      <p className="text-xs" style={{ color: "var(--muted)" }}>
-                        {c.categoryName}
-                        {c.isRequired ? " · wajib" : ""}
-                        {c.requiresPhoto ? " · foto" : ""}
-                        {c.sourceItemId ? "" : " · custom"}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="section-title">{editingChecklist ? "Edit checklist" : "Checklist project"}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {editingChecklist ? "Perubahan berlaku untuk pengisian berikutnya. Laporan yang sudah dikirim tetap utuh." : `${checklist.length} poin aktif`}
+              </p>
+            </div>
+            {canManage && !editingChecklist ? <Link className="btn-primary" href={`/projects/${id}?tab=checklist&edit=1`}>Edit checklist</Link> : null}
+          </div>
+          {editingChecklist ? (
+            <ProjectChecklistEditor
+              projectId={id}
+              version={checklistEditVersion(checklist)}
+              initialRows={checklist.map(({ id, phase, label, description, categoryName, isRequired, requiresPhoto }) => ({
+                id, phase, label, description, categoryName, isRequired, requiresPhoto,
+              }))}
+            />
+          ) : (
+            <>
+              {saved === "1" && canManage ? <p role="status" className="tone-success mb-3 rounded-lg px-3 py-2 text-sm">Checklist tersimpan.</p> : null}
+              <div className="space-y-3">
+                {PHASES.map((phase) => {
+                  const rows = checklist.filter((row) => row.phase === phase);
+                  return (
+                    <section key={phase} className="surface-card p-4">
+                      <h3 className="section-title">{phaseLabel[phase]} <span className="status-badge tone-neutral">{rows.length}</span></h3>
+                      {rows.length === 0 ? <p className="mt-2 text-sm text-[var(--muted)]">Belum ada poin.</p> : (
+                        <ol className="mt-2 divide-y divide-[var(--border)]">
+                          {rows.map((row) => (
+                            <li key={row.id} className="break-words py-2 text-sm">
+                              <p className="font-medium">{row.label}</p>
+                              {row.description ? <p className="text-[var(--muted)]">{row.description}</p> : null}
+                              <p className="text-xs text-[var(--muted)]">
+                                {[row.categoryName, row.isRequired ? "Wajib" : "Opsional", row.requiresPhoto ? "Wajib foto" : ""].filter(Boolean).join(" · ")}
+                              </p>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </section>
+                  );
+                })}
               </div>
-            );
-          })}
-          {checklist.length === 0 ? (
-            <p
-              className="rounded-xl border px-4 py-6 text-center text-sm"
-              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
-            >
-              Belum ada checklist.
-            </p>
-          ) : null}
-          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-            Editor checklist project tersedia di iterasi berikutnya.
-          </p>
+              {checklistHistory.length > 0 ? (
+                <details className="surface-card mt-4 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold">Riwayat perubahan checklist</summary>
+                  <ol className="mt-2 divide-y divide-[var(--border)]">
+                    {checklistHistory.map(({ id: changeId, at, editorName, changes }) => (
+                      <li key={changeId} className="py-3 text-sm">
+                        <p className="font-medium">{editorName}</p>
+                        <p className="text-xs text-[var(--muted)]">{formatReportTimestamp(at, project.timezone)}</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5 text-[var(--muted)]">
+                          {changes.map(({ before, after }) => {
+                            const item = after ?? before!;
+                            const action = !before ? "Ditambah" : !after ? "Dinonaktifkan" : "Diubah";
+                            return (
+                              <li key={item.id} className="break-words">
+                                {action} · {phaseLabel[item.phase]} · {before && after && before.label !== after.label ? `${before.label} → ` : ""}{item.label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
+            </>
+          )}
         </section>
       ) : null}
 
@@ -429,27 +476,19 @@ export default async function ProjectDetailPage({
                     </p>
                   </div>
                   <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--border)" }}>
-                    {m.roleInProject}
+                    {projectRoleLabel[m.roleInProject]}
                   </span>
                 </div>
 
                 {canManage ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <form action={setMemberRoleAction}>
+                    <form action={setMemberRoleAction} className="flex flex-wrap gap-2">
                       <input type="hidden" name="projectId" value={id} />
                       <input type="hidden" name="userId" value={m.userId} />
-                      <input
-                        type="hidden"
-                        name="roleInProject"
-                        value={m.roleInProject === "lead" ? "crew" : "lead"}
-                      />
-                      <button
-                        type="submit"
-                        className="min-h-[34px] rounded-md border px-2 text-xs"
-                        style={{ borderColor: "var(--border)", color: "var(--fg)" }}
-                      >
-                        {m.roleInProject === "lead" ? "Jadikan crew" : "Jadikan Head Crew"}
-                      </button>
+                      <select name="roleInProject" defaultValue={m.roleInProject} aria-label={`Peran ${m.name}`} className="min-h-11 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm">
+                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
+                      </select>
+                      <button type="submit" className="btn-secondary">Simpan peran</button>
                     </form>
                     <form action={removeMemberAction}>
                       <input type="hidden" name="projectId" value={id} />
@@ -507,9 +546,9 @@ export default async function ProjectDetailPage({
                 className="min-h-tap rounded-lg border px-3 text-sm"
                 style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
               >
-                <option value="crew">Crew</option>
-                <option value="lead">Head Crew (lead)</option>
+                {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
               </select>
+              <p className="text-xs text-[var(--muted)]">Admin Project dapat melihat dan mengunduh laporan project ini.</p>
               <button
                 type="submit"
                 className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"

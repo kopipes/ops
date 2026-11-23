@@ -38,6 +38,7 @@ function ReportSection({
   projectId,
   dayId,
   canReview = false,
+  canCreateIssue = false,
 }: {
   title: string;
   block: ReportBlock | null;
@@ -45,6 +46,7 @@ function ReportSection({
   projectId: string;
   dayId: string;
   canReview?: boolean;
+  canCreateIssue?: boolean;
 }) {
   if (!block) {
     return (
@@ -123,7 +125,7 @@ function ReportSection({
         {block.handoverNote ? <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Handover laporan ini:</strong> {block.handoverNote}</p> : null}
         {block.notes ? <p className="mt-1 text-sm whitespace-pre-wrap">{block.notes}</p> : null}
 
-        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} canReview={canReview} canEdit={block.canEdit} timezone={tz} issueContext={{projectId,dayId,phase:block.phase}} />
+        <ReportChecklist reportId={block.reportId} phase={title} results={block.results} canReview={canReview} canEdit={block.canEdit} timezone={tz} issueContext={canCreateIssue ? { projectId, dayId, phase: block.phase } : undefined} />
 
         <ReportGeneralPhotos photos={block.photos} reportId={block.reportId} canReview={canReview} canEdit={block.canEdit} timezone={tz}/>
       </div>
@@ -221,9 +223,9 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
 
       {reviewError?<p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Laporan baru berubah. Periksa isi terbaru, lalu review ulang.</p>:null}
       <div id="report-checklists" className="scroll-mt-5" />
-      {detail.openingReports.length ? detail.openingReports.map((block,index)=><ReportSection key={block.reportId} title={`Opening ${index+1} dari ${detail.openingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>) : <ReportSection title="Opening" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>}
-      {detail.monitoring.map((block,index)=><ReportSection key={block.reportId} title={`Monitoring ${index+1} dari ${detail.monitoring.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>)}
-      {detail.closingReports.length ? detail.closingReports.map((block,index)=><ReportSection key={block.reportId} title={`Closing ${index+1} dari ${detail.closingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>) : <ReportSection title="Closing" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview}/>}
+      {detail.openingReports.length ? detail.openingReports.map((block,index)=><ReportSection key={block.reportId} title={`Opening ${index+1} dari ${detail.openingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview} canCreateIssue={detail.canCreateIssue}/>) : <ReportSection title="Opening" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview} canCreateIssue={detail.canCreateIssue}/>}
+      {detail.monitoring.map((block,index)=><ReportSection key={block.reportId} title={`Monitoring ${index+1} dari ${detail.monitoring.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview} canCreateIssue={detail.canCreateIssue}/>)}
+      {detail.closingReports.length ? detail.closingReports.map((block,index)=><ReportSection key={block.reportId} title={`Closing ${index+1} dari ${detail.closingReports.length}`} block={block} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview} canCreateIssue={detail.canCreateIssue}/>) : <ReportSection title="Closing" block={null} tz={tz} projectId={detail.project.id} dayId={detail.day.id} canReview={detail.canReview} canCreateIssue={detail.canCreateIssue}/>}
 
       {detail.day.handoverNote ? (
         <div
@@ -250,7 +252,7 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
                 className="rounded-lg border px-3 py-2"
                 style={{ borderColor: "var(--border)", background: "var(--surface)" }}
               >
-                <Link href={`/issues/${i.id}`} style={{ color: "var(--fg)" }}>
+                <div style={{ color: "var(--fg)" }}>
                   <p className="text-xs" style={{ color: "var(--muted)" }}>
                     {i.code}
                   </p>
@@ -259,8 +261,8 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
                     <Pill label={severityLabel[i.severity as keyof typeof severityLabel]} tone={SEVERITY_TONE[i.severity]} />
                     <Pill label={issueStatusLabel[i.status as keyof typeof issueStatusLabel]} tone={STATUS_TONE[i.status]} />
                   </span>
-                  <span className="mt-1 block text-xs" style={{ color: "var(--accent)" }}>Buka detail & tindak lanjut →</span>
-                </Link>
+                  {detail.canViewIssues ? <Link href={`/issues/${i.id}`} className="mt-1 block text-xs text-[var(--accent)]">Buka detail &amp; tindak lanjut →</Link> : null}
+                </div>
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   Next step: {i.nextStep}
                 </p>
@@ -299,7 +301,7 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
 
       <aside className="lg:sticky lg:top-8 lg:flex lg:flex-col">
       {/* §7.5: PDF export */}
-      {detail.canReview ? (
+      {detail.canExport ? (
         <section className="mb-6">
           <h2 className="mb-1 text-sm font-medium" style={{ color: "var(--muted)" }}>
             Export

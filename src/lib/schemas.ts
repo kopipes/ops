@@ -3,15 +3,31 @@
  * of truth for validation). Server always re-validates — see §9.3.
  */
 import { z } from "zod";
+import { PROJECT_ROLES } from "./project-roles";
 
 export const PHASES = ["opening", "monitoring", "closing"] as const;
 export const phaseSchema = z.enum(PHASES);
+export const projectRoleSchema = z.enum(PROJECT_ROLES);
 
 export const phaseLabel: Record<(typeof PHASES)[number], string> = {
   opening: "Opening",
   monitoring: "Monitoring",
   closing: "Closing",
 };
+
+export const projectChecklistEditSchema = z.object({
+  version: z.string().regex(/^[a-f0-9]{64}$/),
+  rows: z.array(z.object({
+    id: z.string().min(1).nullable(),
+    phase: phaseSchema,
+    label: z.string().trim().min(1, "Nama poin wajib diisi").max(200),
+    description: z.string().trim().max(500).nullable().transform((value) => value || null),
+    categoryName: z.string().trim().max(60),
+    isRequired: z.boolean(),
+    requiresPhoto: z.boolean(),
+  })).max(1000, "Maksimal 1.000 poin checklist per project"),
+});
+export type ProjectChecklistEdit = z.infer<typeof projectChecklistEditSchema>;
 
 const trimmed = (min: number, max: number, msg: string) =>
   z.string().trim().min(min, msg).max(max, msg);
@@ -207,7 +223,7 @@ export const projectInputSchema = z
       .array(
         z.object({
           userId: z.string().min(1),
-          roleInProject: z.enum(["lead", "crew"]).default("crew"),
+          roleInProject: projectRoleSchema.default("crew"),
         }),
       )
       .default([]),
@@ -261,7 +277,7 @@ export const setStatusSchema = z.object({
 export const setMemberRoleSchema = z.object({
   projectId: z.string().min(1),
   userId: z.string().min(1),
-  roleInProject: z.enum(["lead", "crew"]),
+  roleInProject: projectRoleSchema,
 });
 
 export const assignOfficerSchema = z.object({

@@ -153,8 +153,10 @@ test("lead promotion works on the Member tab", async ({ page }) => {
   });
 
   await page.goto(`${url}?tab=members`);
-  await page.getByRole("button", { name: "Jadikan Head Crew" }).first().click();
-  await expect(page.getByText("lead", { exact: true }).first()).toBeVisible();
+  const member = page.locator("li").filter({ hasText: "crew@ops.test" });
+  await member.getByRole("combobox").selectOption("lead");
+  await member.getByRole("button", { name: "Simpan peran" }).click();
+  await expect(member.locator("span").filter({ hasText: /^Head Crew$/ })).toBeVisible();
 });
 
 test("project settings show windows disabled by default", async ({ page }) => {
@@ -217,4 +219,72 @@ test("admin can transition project status to completed", async ({ page }) => {
   await page.getByRole("button", { name: "Simpan status" }).click();
 
   await expect(page.getByText("Selesai").first()).toBeVisible();
+});
+
+test("checklist changes apply next time and Admin Project can download the old report", async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  await login(page, "manager@ops.test");
+  const project = await createProjectViaWizard(page, {
+    name: `Checklist live ${Date.now()}`,
+    code: uniqueCode(),
+    template: false,
+  });
+  const checklist = `${project}?tab=checklist`;
+  await page.goto(checklist);
+  await page.getByRole("link", { name: "Edit checklist" }).click();
+  let monitoring = page.getByRole("region", { name: "Monitoring" });
+  await monitoring.getByRole("button", { name: "+ Tambah poin" }).click();
+  await monitoring.getByLabel("Nama poin").fill("Periksa lampu");
+  await page.getByRole("button", { name: "Simpan checklist" }).click();
+  await expect(page.getByRole("status")).toHaveText("Checklist tersimpan.");
+
+  await page.goto(project);
+  await page.getByRole("listitem").filter({ hasText: "monitoring" }).getByRole("link", { name: "Isi", exact: true }).click();
+  await waitForHydration(page, "#notes");
+  await page.locator("#notes").fill("Penerangan berfungsi.");
+  await page.getByRole("button", { name: "OK", exact: true }).click();
+  await page.getByRole("button", { name: "Submit Monitoring", exact: true }).click();
+  await expect(page).toHaveURL(/submitted=/);
+  const detail = await page.getByRole("link", { name: /Lihat detail hari/ }).getAttribute("href");
+  expect(detail).toBeTruthy();
+
+  await page.goto(checklist);
+  await page.getByRole("link", { name: "Edit checklist" }).click();
+  monitoring = page.getByRole("region", { name: "Monitoring" });
+  await monitoring.getByText("Periksa lampu", { exact: true }).click();
+  await monitoring.getByLabel("Nama poin").fill("Periksa lampu darurat");
+  await monitoring.getByRole("button", { name: "+ Tambah poin" }).click();
+  await monitoring.getByLabel("Nama poin").last().fill("Periksa ventilasi");
+  await monitoring.getByRole("button", { name: "Naikkan Periksa ventilasi" }).click();
+  await page.getByRole("button", { name: "Simpan checklist" }).click();
+  await expect(page.getByRole("status")).toHaveText("Checklist tersimpan.");
+  await page.getByText("Riwayat perubahan checklist", { exact: true }).click();
+  await expect(page.getByText("Diubah · Monitoring · Periksa lampu → Periksa lampu darurat", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.goto(`${project}?tab=members`);
+  const row = page.locator("li").filter({ hasText: "crew@ops.test" });
+  await row.getByRole("combobox").selectOption("admin_project");
+  await row.getByRole("button", { name: "Simpan peran" }).click();
+  await expect(row.locator("span").filter({ hasText: /^Admin Project$/ })).toBeVisible();
+
+  const viewerContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  try {
+    const viewer = await viewerContext.newPage();
+    await login(viewer, "crew@ops.test");
+    await viewer.goto(`${BASE}${detail}`);
+    await expect(viewer.getByText("Periksa lampu", { exact: true })).toBeVisible();
+    await expect(viewer.getByText("Periksa lampu darurat", { exact: true })).toHaveCount(0);
+    await expect(viewer.getByRole("button", { name: "Mark as Reviewed" })).toHaveCount(0);
+    await expect(viewer.getByRole("link", { name: "Report", exact: true }).first()).toBeVisible();
+    const download = viewer.waitForEvent("download", { timeout: 45_000 });
+    await viewer.getByRole("button", { name: "Export PDF laporan harian", exact: true }).click();
+    expect((await download).suggestedFilename()).toMatch(/^laporan-.*\.pdf$/);
+    await viewer.goto(`${project}?tab=settings`);
+    await expect(viewer.getByRole("button", { name: "Export PDF rekap project", exact: true })).toBeVisible();
+    await viewer.goto(`${checklist}&edit=1`);
+    await expect(viewer.getByRole("button", { name: "Simpan checklist" })).toHaveCount(0);
+  } finally {
+    await viewerContext.close();
+  }
 });

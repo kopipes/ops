@@ -45,7 +45,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const db = getDb();
   const settings = await getGlobalSettings(db);
 
-  const ids = await visibleProjectIds(db, session.user);
+  const ids = await visibleProjectIds(db, session.user, { workspaceOnly: true });
   const activeProjects =
     ids.length === 0
       ? []

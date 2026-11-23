@@ -95,6 +95,15 @@ trap 'recover 143' TERM
 stopped=1
 systemctl stop ops.service
 sqlite3 /var/lib/ops/data/ops.db ".backup '$backup/ops.db'"
+if [[ ! -f $target/src/lib/project-roles.ts ]]; then
+  # Older code treats every active member as Crew. Stop before it can run
+  # against a database with active report-only memberships.
+  role_db=${snapshot:-$backup/ops.db}
+  if [[ $(sqlite3 -readonly "$role_db" "SELECT EXISTS(SELECT 1 FROM project_members WHERE role_in_project='admin_project' AND is_active=1);") != 0 ]]; then
+    echo "Target release does not support active Admin Project memberships." >&2
+    recover 1
+  fi
+fi
 if [[ -n $snapshot ]]; then
   replaced_db=1
   restore_db "$snapshot"

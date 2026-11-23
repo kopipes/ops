@@ -3,6 +3,7 @@
 import { zonedToUtc } from "@/lib/datetime";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
+import { getEditableReport } from "@/server/services/report-edits";
 import { getDb, getRawDb } from "@/server/db";
 import { requireUser } from "@/server/auth/current-user";
 import { projectDays, projects, reports } from "@/server/db/schema";
@@ -58,6 +59,8 @@ export async function submitReportAction(
   const projectDayId = String(formData.get("projectDayId") ?? "");
   const phase = String(formData.get("phase") ?? "") as Phase;
   const clientSubmissionId = String(formData.get("clientSubmissionId") ?? "");
+  const checklistVersion = String(formData.get("checklistVersion") ?? "");
+  if (!/^[a-f0-9]{64}$/.test(checklistVersion)) return { error: "Muat ulang halaman untuk membuka checklist terbaru." };
 
   if (!projectId || !projectDayId || !clientSubmissionId) {
     return { error: "Data form tidak lengkap." };
@@ -103,6 +106,7 @@ export async function submitReportAction(
       projectDayId,
       phase,
       clientSubmissionId,
+      checklistVersion,
       notes: notes === "" ? null : notes,
       phaseNote,
       observedAt:eventAt,
@@ -137,11 +141,5 @@ export async function submitReportAction(
 export async function canEditReportAction(reportId: string): Promise<boolean> {
   const session = await requireUser();
   const db = getDb();
-  const row = await db
-    .select({ submittedBy: reports.submittedBy })
-    .from(reports)
-    .where(eq(reports.id, reportId))
-    .get();
-  if (!row) return false;
-  return row.submittedBy === session.user.id || session.user.role === "admin";
+  return Boolean((await getEditableReport(db, session.user, reportId))?.canEdit);
 }

@@ -35,7 +35,7 @@ import {
   canCloseIssue,
   canCreateIssue,
   canSetIssueStatus,
-  canViewProject,
+  canViewProjectWorkspace,
   isAdmin,
   isManagerOfProjectDivision,
   type ActingUser,
@@ -194,7 +194,7 @@ export async function createIssue(
   await assertPhotosUsable(db, user, input.photoIds, input.projectId);
 
   // PIC must be a project member when a user is given.
-  if (input.picUserId && !facts.memberIds.includes(input.picUserId)) {
+  if (input.picUserId && (!facts.memberIds.includes(input.picUserId) || facts.adminProjectIds.includes(input.picUserId))) {
     throw new ValidationError("PIC harus member project");
   }
 
@@ -309,7 +309,7 @@ export async function updateIssueFields(
     throw new ForbiddenError("Kamu tidak bisa mengubah issue ini");
   }
 
-  if (input.picUserId && !facts.memberIds.includes(input.picUserId)) {
+  if (input.picUserId && (!facts.memberIds.includes(input.picUserId) || facts.adminProjectIds.includes(input.picUserId))) {
     throw new ValidationError("PIC harus member project");
   }
 
@@ -705,6 +705,7 @@ export interface IssueDetail {
   /** Whether the acting user may mutate this issue. */
   canEdit: boolean;
   canClose: boolean;
+  canComment: boolean;
 }
 
 export async function getIssueDetail(
@@ -724,7 +725,7 @@ export async function getIssueDetail(
   if (!project || project.deletedAt !== null) return null;
   const facts = await loadFacts(db, row.projectId);
   // §2.2: reading an issue requires seeing its project.
-  if (!canViewProject(user, facts)) return null;
+  if (!canViewProjectWorkspace(user, facts)) return null;
 
   const updates = await db
     .select({
@@ -828,6 +829,7 @@ export async function getIssueDetail(
     })),
     canEdit: canSetIssueStatus(user, facts, row.status),
     canClose: canCloseIssue(user, facts),
+    canComment: canCreateIssue(user, facts),
   };
 }
 

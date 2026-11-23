@@ -1,3 +1,4 @@
+import { adminProjectReportIds } from "@/server/visibility";
 import { redirect } from "next/navigation";
 import { BottomNav, type Tab } from "@/components/BottomNav";
 import { SideNav } from "@/components/SideNav";
@@ -30,8 +31,8 @@ export async function AppShell({
   // §4.1: a reset account must set a new password before using the app.
   if (session.mustChangePassword) redirect("/me/password");
 
-  // §12: Report tab only for roles that may see it.
-  const canSeeReports = ["admin", "corporate", "manager"].includes(session.user.role);
+  const hasReviewNavigation = ["admin", "corporate", "manager"].includes(session.user.role);
+  const canSeeReports = hasReviewNavigation || adminProjectReportIds(getDb(), session.user).length > 0;
 
   const tabs: Tab[] = [
     { href: "/", label: "Hari Ini", icon: ICONS.home },
@@ -48,7 +49,7 @@ export async function AppShell({
         tabs={tabs}
         userName={session.name}
         userRole={session.user.role}
-        canSeeReports={canSeeReports}
+        canSeeReports={hasReviewNavigation}
       />
 
       {/* Below lg the sidebar is hidden and the bottom bar is shown. The

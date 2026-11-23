@@ -1,3 +1,4 @@
+import { PROJECT_ROLES } from "@/lib/project-roles";
 /**
  * Drizzle schema — source of truth per PRD-Ops.md §11.
  *
@@ -190,7 +191,7 @@ export const projectDivisions = sqliteTable("project_divisions", {
 export const projectMembers = sqliteTable("project_members", {
   projectId: text("project_id").notNull().references(() => projects.id),
   userId: text("user_id").notNull().references(() => users.id),
-  roleInProject: text("role_in_project", { enum: ["lead", "crew"] }).notNull().default("crew"),
+  roleInProject: text("role_in_project", { enum: PROJECT_ROLES }).notNull().default("crew"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   addedBy: text("added_by").references(() => users.id),
   createdAt,
@@ -231,6 +232,8 @@ export const projectChecklistItems = sqliteTable("project_checklist_items", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),
   sourceItemId: text("source_item_id").references(() => checklistItems.id),
+  // New versions use the original item ID to group answers in daily summaries.
+  seriesId: text("series_id"),
   phase: text("phase", { enum: ["opening", "monitoring", "closing"] }).notNull(),
   categoryName: text("category_name").notNull(),
   label: text("label").notNull(),

@@ -524,6 +524,7 @@ export async function loadFacts(db: DB, projectId: string): Promise<ProjectFacts
     divisionIds: divs.map((d) => d.divisionId),
     memberIds: members.map((m) => m.userId),
     leadIds: members.filter((m) => m.role === "lead").map((m) => m.userId),
+    adminProjectIds: members.filter((m) => m.role === "admin_project").map((m) => m.userId),
   };
 }
 

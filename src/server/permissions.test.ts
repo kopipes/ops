@@ -35,6 +35,7 @@ const project = (over: Partial<ProjectFacts> = {}): ProjectFacts => ({
   divisionIds: [],
   memberIds: ["u-crew"],
   leadIds: [],
+  adminProjectIds: [],
   ...over,
 });
 

@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 
-def exercise(reject_target, interrupt_stop=False):
+def exercise(reject_target, interrupt_stop=False, report_only=False):
     with tempfile.TemporaryDirectory(prefix="ops-rollback-test-") as directory:
         root = Path(directory)
         source = Path(__file__).with_name("rollback.sh").read_text()
@@ -38,6 +38,9 @@ def exercise(reject_target, interrupt_stop=False):
             with sqlite3.connect(database) as connection:
                 connection.execute("CREATE TABLE state(value TEXT)")
                 connection.execute("INSERT INTO state VALUES(?)", (value,))
+                connection.execute("CREATE TABLE project_members(role_in_project TEXT, is_active INTEGER)")
+                if report_only:
+                    connection.execute("INSERT INTO project_members VALUES('admin_project', 1)")
         commands = {
             "systemctl": f'''#!/bin/bash
 set -eu
@@ -70,7 +73,9 @@ printf '%s\\n' '{{"ok":true}}'
             file.chmod(0o755)
         env = {**os.environ, "PATH": str(root / "bin") + ":" + os.environ["PATH"], "OPS_TEST_REJECT": "1" if reject_target else "0", "OPS_TEST_INTERRUPT_STOP": "1" if interrupt_stop else "0"}
         result = subprocess.run(["bash", str(script), target, str(snapshot)], env=env, text=True, capture_output=True, timeout=30)
-        failed = reject_target or interrupt_stop
+        failed = reject_target or interrupt_stop or report_only
+        if report_only:
+            assert "does not support active Admin Project" in result.stderr
         expected_sha = previous if failed else target
         expected_value = "live-vps-data" if failed else "prior-backup-data"
         assert (result.returncode != 0) == failed, result.stdout + result.stderr
@@ -83,7 +88,7 @@ printf '%s\\n' '{{"ok":true}}'
         assert list((root / "var/backups/ops").glob("pre-rollback-*/previous-release.txt"))
         if not interrupt_stop:
             assert list((root / "var/backups/ops").glob("pre-rollback-*/ops.db"))
-        print("PASS: interrupted stop restores healthy previous service" if interrupt_stop else "PASS: failed rollback restores healthy previous code+DB" if reject_target else "PASS: successful rollback restores requested code+DB")
+        print("PASS: blocks downgrade with active Admin Project" if report_only else "PASS: interrupted stop restores healthy previous service" if interrupt_stop else "PASS: failed rollback restores healthy previous code+DB" if reject_target else "PASS: successful rollback restores requested code+DB")
 
 
 if not shutil.which("flock"):
@@ -92,3 +97,4 @@ exercise(False)
 exercise(True)
 
 exercise(False, True)
+exercise(False, report_only=True)
