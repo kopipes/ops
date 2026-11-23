@@ -21,7 +21,11 @@ for (const width of [390, 1440]) {
     await page.getByLabel("Kode project", { exact: true }).fill(code);
     await page.getByLabel("Nama project", { exact: true }).fill(name);
     await page.getByLabel("Venue", { exact: true }).fill("Test deletion venue");
-    for (let step = 0; step < 4; step++) await page.getByRole("button", { name: "Lanjut →", exact: true }).click();
+    for (let step = 0; step < 3; step++) await page.getByRole("button", { name: "Lanjut →", exact: true }).click();
+    // Give the non-owner Manager read access so the test exercises deletion
+    // permission on a project they can actually see.
+    await page.locator("section:not([hidden]) li", { hasText: "manager@ops.test" }).getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Lanjut →", exact: true }).click();
     await page.getByRole("button", { name: "Simpan project", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
     const url = page.url();
