@@ -166,7 +166,8 @@ test("reviewer comment is visible to crew (§7.2 no.7)", async ({ page, browser 
   await submitOpening(mgrPage,id);
   const url = await openDayDetail(mgrPage, name);
   const point=mgrPage.locator('li[id^="point-"]').first();
-  await point.getByText("Review poin ini",{exact:true}).click();
+  await point.getByRole("checkbox",{name:"Tidak OK",exact:true}).check();
+  await point.getByRole("radio",{name:"Others",exact:true}).check();
   await point.getByLabel("Apa yang perlu diperbaiki?",{exact:true}).fill("Tolong lengkapi foto sisi timur");
   await point.getByRole("button",{name:"Simpan review poin",exact:true}).click();
   await expect(mgrPage.getByText("Tolong lengkapi foto sisi timur")).toBeVisible();

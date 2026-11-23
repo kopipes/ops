@@ -6,7 +6,7 @@ import {canReviewDay,type ActingUser} from "@/server/permissions";
 import {visibleProjectPredicate} from "@/server/visibility";
 import {currentProjectAccess} from "./project-access";
 import {ForbiddenError,ValidationError} from "./checklist-items";
-import {pointContentHash,REVIEW_ACTION_LABELS,type ReviewAction,type PointReview} from "./checklist-reviews";
+import {pointContentHash,reviewNote,type ReviewAction,type PointReview} from "./checklist-reviews";
 type DB=BetterSQLite3Database<typeof s>;
 export function photoContentHash(photoId:string,replacementIds:string[]){return pointContentHash('photo',photoId,replacementIds);}
 export function photoFeedback(db:DB,ids:string[]) {
@@ -14,9 +14,8 @@ export function photoFeedback(db:DB,ids:string[]) {
  return db.select({id:s.photoReviews.id,photoId:s.photoReviews.photoId,userId:s.photoReviews.userId,verdict:s.photoReviews.verdict,action:s.photoReviews.action,note:s.photoReviews.note,contentHash:s.photoReviews.contentHash,createdAt:s.photoReviews.createdAt,authorName:s.users.name}).from(s.photoReviews).innerJoin(s.users,eq(s.users.id,s.photoReviews.userId)).where(inArray(s.photoReviews.photoId,ids)).orderBy(desc(s.photoReviews.createdAt),desc(s.photoReviews.id)).all();
 }
 export function addPhotoReview(db:DB,actor:ActingUser,input:{id:string;photoId:string;verdict:string;action:string;note:string;contentHash:string}) {
- const note=input.note.trim();
- if(!/^[0-9a-f-]{36}$/i.test(input.id)||!['ok','not_ok'].includes(input.verdict)||note.length>2000)throw new ValidationError('Review foto tidak valid');
- if(input.verdict==='not_ok'&&(!Object.hasOwn(REVIEW_ACTION_LABELS,input.action)||!note))throw new ValidationError('Pilih tindak lanjut dan isi komentar perbaikan');
+ if(!/^[0-9a-f-]{36}$/i.test(input.id)||!['ok','not_ok'].includes(input.verdict))throw new ValidationError('Review foto tidak valid');
+ const note = reviewNote(input);
  return db.transaction(tx=>{
   const context=tx.select({photo:s.photos,report:s.reports}).from(s.photos).innerJoin(s.reports,eq(s.reports.id,s.photos.ownerId)).where(and(eq(s.photos.id,input.photoId),eq(s.photos.ownerType,'report'),isNull(s.photos.deletedAt),isNull(s.reports.deletedAt),eq(s.reports.status,'submitted'))).get();
   if(!context||context.photo.projectId!==context.report.projectId||context.photo.projectDayId!==context.report.projectDayId||context.photo.replacesPhotoId)throw new ValidationError('Foto laporan asli tidak ditemukan');

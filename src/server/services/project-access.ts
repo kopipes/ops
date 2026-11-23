@@ -4,11 +4,18 @@ import * as schema from "@/server/db/schema";
 import type {ActingUser,ProjectFacts} from "@/server/permissions";
 import {ForbiddenError,ValidationError} from "./checklist-items";
 type DB=BetterSQLite3Database<typeof schema>;
+
+export function currentProjectActor(db: DB, actor: ActingUser): ActingUser {
+  const row = db.select().from(schema.users).where(eq(schema.users.id, actor.id)).get();
+  if (!actor.isActive || !row?.isActive || row.pendingApproval || row.mustChangePassword) throw new ForbiddenError();
+  const divisions = db.select({ id: schema.userDivisions.divisionId }).from(schema.userDivisions)
+    .where(eq(schema.userDivisions.userId, row.id)).all();
+  return { id: row.id, role: row.role, isActive: true, divisionIds: divisions.map((division) => division.id) };
+}
+
 /** Use inside a synchronous write transaction so revocation cannot race a write. */
 export function currentProjectAccess(db:DB,actor:ActingUser,projectId:string):{user:ActingUser;facts:ProjectFacts} {
- const row=db.select().from(schema.users).where(eq(schema.users.id,actor.id)).get();
- if(!actor.isActive||!row?.isActive||row.pendingApproval||row.mustChangePassword)throw new ForbiddenError();
- const user:ActingUser={id:row.id,role:row.role,isActive:true,divisionIds:db.select().from(schema.userDivisions).where(eq(schema.userDivisions.userId,row.id)).all().map(m=>m.divisionId)};
+ const user = currentProjectActor(db, actor);
  const project=db.select().from(schema.projects).where(and(eq(schema.projects.id,projectId),isNull(schema.projects.deletedAt))).get();
  if(!project)throw new ValidationError("Project tidak ditemukan");
  const members=db.select().from(schema.projectMembers).where(and(eq(schema.projectMembers.projectId,project.id),eq(schema.projectMembers.isActive,true))).all().filter(member=>member.userId!==project.createdBy);

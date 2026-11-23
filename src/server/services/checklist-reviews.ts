@@ -8,7 +8,7 @@ import { currentProjectAccess } from "./project-access";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 
 type DB = BetterSQLite3Database<typeof schema>;
-export const REVIEW_ACTION_LABELS = { re_check:"Re-check", re_take_photo:"Re-take photo", others:"Others" } as const;
+export const REVIEW_ACTION_LABELS = { re_check:"Re-check", re_take_photo:"Re-Take", others:"Others" } as const;
 export type ReviewAction = keyof typeof REVIEW_ACTION_LABELS;
 export interface PointReview {id:string;verdict:"ok"|"not_ok";action:ReviewAction|null;note:string|null;authorName:string;createdAt:number;contentHash:string;}
 export function pointContentHash(result:string,note:string|null,photoIds:string[]) {
@@ -22,12 +22,21 @@ function freshActor(db: DB, actor: ActingUser): ActingUser {
   const memberships=db.select().from(schema.userDivisions).where(eq(schema.userDivisions.userId,actor.id)).all();
   return {id:row.id,role:row.role,isActive:true,divisionIds:memberships.map(m=>m.divisionId)};
 }
+/** Keep the standard retake instruction for detail and notification readers. */
+export function reviewNote(input: { verdict: string; action: string; note: string }): string {
+  const note = input.note.trim();
+  if (note.length > 2000) throw new ValidationError("Komentar maksimal 2000 karakter");
+  if (input.verdict !== "not_ok") return note;
+  if (!Object.hasOwn(REVIEW_ACTION_LABELS, input.action)) throw new ValidationError("Pilih tindak lanjut");
+  if (input.action === "re_take_photo") return note || "Ambil ulang foto.";
+  if (!note) throw new ValidationError("Isi catatan perbaikan");
+  return note;
+}
+
 export function addPointReview(db:DB,actor:ActingUser,input:{id:string;checkResultId:string;verdict:string;action:string;note:string;contentHash:string}) {
   if(!/^[0-9a-f-]{36}$/i.test(input.id))throw new ValidationError("Kunci review tidak valid");
   if(!["ok","not_ok"].includes(input.verdict))throw new ValidationError("Pilih hasil review");
-  const note=input.note.trim();
-  if(note.length>2000)throw new ValidationError("Komentar maksimal 2000 karakter");
-  if(input.verdict==="not_ok" && (!Object.hasOwn(REVIEW_ACTION_LABELS,input.action)||!note))throw new ValidationError("Pilih tindak lanjut dan isi komentar perbaikan");
+  const note = reviewNote(input);
   return db.transaction(tx=>{
     const context=tx.select({result:schema.reportCheckResults,report:schema.reports,project:schema.projects})
       .from(schema.reportCheckResults).innerJoin(schema.reports,eq(schema.reports.id,schema.reportCheckResults.reportId))

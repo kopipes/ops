@@ -38,7 +38,7 @@ import {
   type ActingUser,
   type ProjectFacts,
 } from "@/server/permissions";
-import { currentProjectAccess } from "./project-access";
+import { currentProjectAccess, currentProjectActor } from "./project-access";
 import { ForbiddenError, ValidationError } from "./checklist-items";
 
 type DB = BetterSQLite3Database<typeof schema>;
@@ -133,6 +133,7 @@ export function syncProjectDays(
   range: { startDate: string; endDate: string },
 ): DaySyncResult {
   const wanted = dateRange(range.startDate, range.endDate);
+  if (wanted.at(-1) !== range.endDate) throw new ValidationError("Rentang tanggal project tidak valid atau terlalu panjang");
   const wantedSet = new Set(wanted);
 
   const existing = db
@@ -206,17 +207,15 @@ export interface CreateProjectResult {
 
 export async function createProject(
   db: DB,
-  user: ActingUser,
+  actor: ActingUser,
   input: ProjectInput,
 ): Promise<CreateProjectResult> {
-  assertCanCreate(user);
-
-  // A manager may only create projects owned by their own division.
-  if (!isAdmin(user) && !user.divisionIds.includes(input.ownerDivisionId)) {
-    throw new ForbiddenError("Kamu hanya bisa membuat project untuk divisimu");
-  }
-
   return db.transaction((tx) => {
+    const user = currentProjectActor(tx, actor);
+    assertCanCreate(user);
+    if (!isAdmin(user) && !user.divisionIds.includes(input.ownerDivisionId)) {
+      throw new ForbiddenError("Kamu hanya bisa membuat project untuk divisimu");
+    }
     assertProjectCodeAvailable(tx, input.code);
 
     const id = randomUUID();

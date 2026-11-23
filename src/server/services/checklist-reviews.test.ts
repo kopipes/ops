@@ -47,10 +47,16 @@ describe('point feedback and notifications',()=>{
   raw.prepare("update users set role='user' where id='m'").run();expect(()=>addPointReview(db,manager,input())).toThrow();
   raw.prepare("update users set is_active=0 where id='a'").run();expect(()=>addPointReview(db,admin,input())).toThrow();
  });
- it('requires action and explanation for Not OK and rejects stale page state',()=>{
-  expect(()=>addPointReview(db,manager,input({note:' '}))).toThrow();expect(()=>addPointReview(db,manager,input({action:'bogus'}))).toThrow();
+ it('requires an action for Not OK, a note for Others, and rejects stale page state',()=>{
+  expect(()=>addPointReview(db,manager,input({action:'others',note:' '}))).toThrow('Isi catatan perbaikan');expect(()=>addPointReview(db,manager,input({action:'bogus'}))).toThrow();
   raw.prepare("update report_check_results set note='changed' where id='rc'").run();expect(()=>addPointReview(db,manager,input())).toThrow(/berubah/);
   expect(listReviewNotifications(db,crew)).toHaveLength(0);
+ });
+ it('lets a Manager request Re-Take without typing a note and notifies the author once',()=>{
+  const request=input({note:""});
+  addPointReview(db,manager,request);
+  addPointReview(db,manager,request);
+  expect(listReviewNotifications(db,crew)).toMatchObject([{action:"re_take_photo",note:"Ambil ulang foto."}]);
  });
  it('does not notify self and another recipient cannot open the notification',()=>{
   raw.prepare("update reports set submitted_by='m'").run();addPointReview(db,manager,input());expect(unreadReviewCount(db,manager)).toBe(0);

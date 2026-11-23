@@ -359,6 +359,12 @@ describe("createProject", () => {
     await expect(createProject(db, crew, projectInput())).rejects.toThrow();
   });
 
+  it("does not create a project from an older Manager session after a role change", async () => {
+    await db.update(schema.users).set({ role: "user" }).where(eq(schema.users.id, mgr.id));
+    await expect(createProject(db, mgr, projectInput())).rejects.toThrow("Tidak punya akses");
+    expect(db.select().from(schema.projects).all()).toEqual([]);
+  });
+
   it("stores additional divisions", async () => {
     const { projectId } = await createProject(
       db,
@@ -404,6 +410,15 @@ describe("updateProject date rules (§11.3)", () => {
     await expect(updateProject(db, mgr, current.projectId, projectInput({ code: "EVT-MINE" }), project.updatedAt))
       .rejects.toThrow("Detail project sudah berubah");
     expect(db.select().from(schema.projects).where(eq(schema.projects.id, current.projectId)).get()?.code).toBe("EVT-OLDCODE");
+  });
+
+  it("does not commit a date range longer than the calendar can create", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput());
+    const days = await listProjectDays(db, projectId);
+    await expect(updateProject(db, mgr, projectId, projectInput({ endDate: "2070-01-01" })))
+      .rejects.toThrow("Rentang tanggal project tidak valid atau terlalu panjang");
+    expect((await listProjectDays(db, projectId)).map((day) => day.id)).toEqual(days.map((day) => day.id));
+    expect(db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()?.endDate).toBe("2026-11-04");
   });
 
   it("only admin may change the owner division", async () => {
