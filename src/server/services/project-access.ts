@@ -11,7 +11,7 @@ export function currentProjectAccess(db:DB,actor:ActingUser,projectId:string):{u
  const user:ActingUser={id:row.id,role:row.role,isActive:true,divisionIds:db.select().from(schema.userDivisions).where(eq(schema.userDivisions.userId,row.id)).all().map(m=>m.divisionId)};
  const project=db.select().from(schema.projects).where(and(eq(schema.projects.id,projectId),isNull(schema.projects.deletedAt))).get();
  if(!project)throw new ValidationError("Project tidak ditemukan");
- const members=db.select().from(schema.projectMembers).where(and(eq(schema.projectMembers.projectId,project.id),eq(schema.projectMembers.isActive,true))).all();
+ const members=db.select().from(schema.projectMembers).where(and(eq(schema.projectMembers.projectId,project.id),eq(schema.projectMembers.isActive,true))).all().filter(member=>member.userId!==project.createdBy);
  const divisions=db.select().from(schema.projectDivisions).where(eq(schema.projectDivisions.projectId,project.id)).all();
- return {user,facts:{id:project.id,status:project.status,ownerDivisionId:project.ownerDivisionId,divisionIds:divisions.map(d=>d.divisionId),memberIds:members.map(m=>m.userId),leadIds:members.filter(m=>m.roleInProject==='lead').map(m=>m.userId),adminProjectIds:members.filter(m=>m.roleInProject==='admin_project').map(m=>m.userId)}};
+ return {user,facts:{id:project.id,status:project.status,ownerDivisionId:project.ownerDivisionId,ownerUserId:project.createdBy,divisionIds:divisions.map(d=>d.divisionId),memberIds:members.map(m=>m.userId),leadIds:members.filter(m=>m.roleInProject==='lead').map(m=>m.userId),adminProjectIds:members.filter(m=>m.roleInProject==='admin_project').map(m=>m.userId)}};
 }

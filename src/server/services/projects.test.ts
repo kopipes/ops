@@ -368,8 +368,7 @@ describe("updateProject date rules (§11.3)", () => {
   });
 
   it("only admin may change the owner division", async () => {
-    const { projectId } = await createProject(db, admin, projectInput());
-    await addMember(db,admin,projectId,mgr.id,"crew");
+    const { projectId } = await createProject(db, mgr, projectInput());
     await expect(
       updateProject(db, mgr, projectId, projectInput({ ownerDivisionId: "d-ops" })),
     ).rejects.toThrow(/Admin/);
@@ -710,6 +709,46 @@ describe("members (§6.1 no.4)", () => {
   });
 });
 
+describe("Owner and member access", () => {
+  it("lets the Manager who made the project manage members without a member row", async () => {
+    const { projectId } = await createProject(db, mgr, projectInput({
+      members: [{ userId: mgr.id, roleInProject: "lead" }, { userId: crew.id, roleInProject: "crew" }],
+    }));
+    expect(db.select().from(schema.projectMembers).all().map((row) => row.userId)).toEqual([crew.id]);
+    expect(await visibleProjectIds(db, mgr, { workspaceOnly: true })).toEqual([projectId]);
+    expect((await loadProjectFacts(db, [projectId])).get(projectId)).toMatchObject({
+      ownerUserId: mgr.id, memberIds: [crew.id], leadIds: [],
+    });
+    expect((await listMemberCandidates(db, projectId)).map((row) => row.userId)).not.toContain(mgr.id);
+    await setMemberRole(db, mgr, projectId, crew.id, "lead");
+    expect(await listMembers(db, projectId)).toMatchObject([{ userId: crew.id, roleInProject: "lead" }]);
+
+    // Old releases enrolled the creator as a member. Preserve the row, but
+    // interpret the creator as Owner so even a stale member role cannot apply.
+    await db.insert(schema.projectMembers).values({ projectId, userId: mgr.id, roleInProject: "admin_project", createdAt: now });
+    expect(adminProjectReportIds(db, mgr)).toEqual([]);
+    expect(await listMembers(db, projectId)).toMatchObject([{ userId: crew.id }]);
+    await expect(setMemberRole(db, admin, projectId, mgr.id, "crew")).rejects.toThrow("Akses Owner");
+    await expect(removeMember(db, admin, projectId, mgr.id)).rejects.toThrow("Akses Owner");
+    await setMemberRole(db, mgr, projectId, crew.id, "crew");
+    expect(await listMembers(db, projectId)).toMatchObject([{ userId: crew.id, roleInProject: "crew" }]);
+  });
+
+  it("blocks member edits by a same-division Manager assigned as Crew and by a Head Crew", async () => {
+    const { projectId } = await createProject(db, admin, projectInput({
+      members: [{ userId: mgr.id, roleInProject: "crew" }, { userId: crew.id, roleInProject: "lead" }],
+    }));
+    await expect(setMemberRole(db, mgr, projectId, crew.id, "crew")).rejects.toThrow("Hanya Owner atau Admin");
+    await expect(setMemberRole(db, crew, projectId, mgr.id, "lead")).rejects.toThrow("Hanya Owner atau Admin");
+    await expect(addMember(db, mgr, projectId, crewOps.id, "crew")).rejects.toThrow("Hanya Owner atau Admin");
+    await expect(removeMember(db, mgr, projectId, crew.id)).rejects.toThrow("Hanya Owner atau Admin");
+    expect(await listMembers(db, projectId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: mgr.id, roleInProject: "crew" }),
+      expect.objectContaining({ userId: crew.id, roleInProject: "lead" }),
+    ]));
+  });
+});
+
 describe("duplicate snapshot rows (regression)", () => {
   let catId: string;
   let masterId: string;
@@ -935,7 +974,7 @@ describe("editing a project checklist in use", () => {
     expect(() => editProjectChecklist(db, mgr, projectId, { version: empty, rows: otherRows })).toThrow("tidak valid");
     await addMember(db, mgr, projectId, crew.id, "lead");
     expect(() => editProjectChecklist(db, crew, projectId, { version: empty, rows: [] })).toThrow("Tidak punya akses");
-    await removeMember(db, admin, projectId, mgr.id);
+    await db.update(schema.users).set({ role: "user" }).where(eq(schema.users.id, mgr.id));
     expect(() => editProjectChecklist(db, mgr, projectId, { version: empty, rows: [] })).toThrow("Tidak punya akses");
     expect(await listProjectChecklist(db, projectId)).toEqual([]);
     expect(listProjectChecklistHistory(db, projectId)).toEqual([]);
@@ -964,7 +1003,7 @@ it("grants Admin Project scoped PDF export and rejects project writes even for a
     canExport: true, canReview: false, canCreateIssue: false, canViewIssues: false,
   });
   await expect(markDayReviewed(db, mgr, day.id)).rejects.toThrow("tidak berhak");
-  await expect(addMember(db, mgr, projectId, crew.id, "lead")).rejects.toThrow("Tidak punya akses");
+  await expect(addMember(db, mgr, projectId, crew.id, "lead")).rejects.toThrow("Hanya Owner atau Admin");
   expect(await submitReport(db, sqlite, mgr, {
     projectId, projectDayId: day.id, phase: "monitoring",
     clientSubmissionId: "report-only-attempt", notes: "No write allowed",

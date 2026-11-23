@@ -20,6 +20,8 @@ export interface ProjectFacts {
   id: string;
   status: "draft" | "active" | "completed" | "archived";
   ownerDivisionId: string;
+  /** The project creator is the Owner, separate from member roles. */
+  ownerUserId: string | null;
   /** Additional divisions (project_divisions). */
   divisionIds: string[];
   /** Active project members (project_members where is_active = 1). */
@@ -53,6 +55,9 @@ export function sharesDivisionWithProject(u: ActingUser, p: ProjectFacts): boole
   return p.divisionIds.some((d) => u.divisionIds.includes(d));
 }
 
+export const isProjectOwner = (u: ActingUser, p: ProjectFacts) => u.id === p.ownerUserId;
+const isManagerOwner = (u: ActingUser, p: ProjectFacts) => isManager(u) && isProjectOwner(u, p);
+
 export const isMember = (u: ActingUser, p: ProjectFacts) => p.memberIds.includes(u.id);
 export const isAdminProject = (u: ActingUser, p: ProjectFacts) => p.adminProjectIds.includes(u.id);
 export const isReportOnlyProjectMember = (u: ActingUser, p: ProjectFacts) => !isGlobalViewer(u) && isAdminProject(u, p);
@@ -60,12 +65,12 @@ export const isOperationalMember = (u: ActingUser, p: ProjectFacts) => isMember(
 export const isLead = (u: ActingUser, p: ProjectFacts) => p.leadIds.includes(u.id);
 
 /**
- * Admin/Corporate see all projects; every other role needs active membership.
+ * Admin/Corporate see all projects. Managers see their own projects and active memberships.
  */
 export function canViewProject(u: ActingUser, p: ProjectFacts): boolean {
   if (!u.isActive) return false;
   if (isGlobalViewer(u)) return true;
-  return isMember(u, p);
+  return isManagerOwner(u, p) || isMember(u, p);
 }
 
 /** Workspace members can see setup and issue details in addition to reports. */
@@ -77,12 +82,9 @@ export function canViewProjectWorkspace(u: ActingUser, p: ProjectFacts): boolean
 // Management (§2.2, §2.3)
 // ---------------------------------------------------------------------------
 
-/** §2.2: admin, or a manager whose division is the project's OWNER division. */
+/** Admin and the Manager who owns this project can change its setup and members. */
 export function canManageProject(u: ActingUser, p: ProjectFacts): boolean {
-  if (!u.isActive) return false;
-  if (isAdmin(u)) return true;
-  // Management requires active membership and an owner-division match.
-  return isOperationalMember(u, p) && isManager(u) && u.divisionIds.includes(p.ownerDivisionId);
+  return u.isActive && (isAdmin(u) || isManagerOwner(u, p));
 }
 
 /** §2.3: create project — admin, or manager (scoped to their division at creation time). */
@@ -100,7 +102,7 @@ export const canAssignMembers = canManageProject;
 
 /** Manager of the project's division (any division match counts for filling reports). */
 export function isManagerOfProjectDivision(u: ActingUser, p: ProjectFacts): boolean {
-  return isOperationalMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p);
+  return isManagerOwner(u, p) || (isOperationalMember(u, p) && isManager(u) && sharesDivisionWithProject(u, p));
 }
 
 /**
@@ -199,12 +201,7 @@ export function canExportPdf(u: ActingUser, p: ProjectFacts): boolean {
  * §2.3: report visibility. Crew see only their own projects;
  * managers their assigned projects; Admin/Corporate everything.
  */
-export function canViewReport(u: ActingUser, p: ProjectFacts): boolean {
-  if (!u.isActive) return false;
-  if (isGlobalViewer(u)) return true;
-  if (isManager(u)) return isMember(u, p);
-  return isMember(u, p);
-}
+export const canViewReport = canViewProject;
 
 // ---------------------------------------------------------------------------
 // Report EDIT window (§13.1)

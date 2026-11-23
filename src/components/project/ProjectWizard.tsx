@@ -1,6 +1,6 @@
 "use client";
 
-import { PROJECT_ROLES, projectRoleLabel, type ProjectRole } from "@/lib/project-roles";
+import { PROJECT_ROLES, projectRoleOptionLabel, type ProjectRole } from "@/lib/project-roles";
 
 import { useActionState, useMemo, useState } from "react";
 import type { ProjectActionState } from "@/app/project-actions";
@@ -612,7 +612,7 @@ export function ProjectWizard({
                         className="min-h-[36px] rounded-md border px-2 text-sm"
                         style={inputStyle}
                       >
-                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
+                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleOptionLabel[role]}</option>)}
                       </select>
                     </div>
                   ) : null}

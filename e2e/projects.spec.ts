@@ -134,7 +134,7 @@ test("checklist snapshot appears on the Checklist tab", async ({ page }) => {
   await expect(page.getByText("Area venue bersih dan siap dipakai").first()).toBeVisible();
 });
 
-test("member added in the wizard appears on the Member tab", async ({ page }) => {
+test("project creator appears as Owner separately from the member added in the wizard", async ({ page }) => {
   await login(page, "manager@ops.test");
   const url = await createProjectViaWizard(page, {
     name: `Member Test ${Date.now()}`,
@@ -142,10 +142,12 @@ test("member added in the wizard appears on the Member tab", async ({ page }) =>
   });
 
   await page.goto(`${url}?tab=members`);
-  await expect(page.getByText("crew@ops.test")).toBeVisible();
+  await expect(page.getByText("crew@ops.test", { exact: true })).toBeVisible();
+  await expect(page.getByText("Owner: Manager Event", { exact: true })).toBeVisible();
+  await expect(page.getByText("manager@ops.test", { exact: true })).toHaveCount(0);
 });
 
-test("lead promotion works on the Member tab", async ({ page }) => {
+test("Owner can promote a Crew member but Head Crew cannot change member access", async ({ page, browser }) => {
   await login(page, "manager@ops.test");
   const url = await createProjectViaWizard(page, {
     name: `Lead Test ${Date.now()}`,
@@ -155,8 +157,21 @@ test("lead promotion works on the Member tab", async ({ page }) => {
   await page.goto(`${url}?tab=members`);
   const member = page.locator("li").filter({ hasText: "crew@ops.test" });
   await member.getByRole("combobox").selectOption("lead");
-  await member.getByRole("button", { name: "Simpan peran" }).click();
+  await member.getByRole("button", { name: "Simpan akses" }).click();
   await expect(member.locator("span").filter({ hasText: /^Head Crew$/ })).toBeVisible();
+
+  const crewContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const crewPage = await crewContext.newPage();
+    await login(crewPage, "crew@ops.test");
+    await crewPage.goto(`${url}?tab=members`);
+    await expect(crewPage.getByText("Head Crew", { exact: true })).toBeVisible();
+    await expect(crewPage.getByRole("button", { name: "Simpan akses" })).toHaveCount(0);
+    await expect(crewPage.getByText("Tambah member", { exact: true })).toHaveCount(0);
+  } finally {
+    await crewContext.close();
+  }
+
 });
 
 test("project settings show windows disabled by default", async ({ page }) => {
@@ -265,7 +280,7 @@ test("checklist changes apply next time and Admin Project can download the old r
   await page.goto(`${project}?tab=members`);
   const row = page.locator("li").filter({ hasText: "crew@ops.test" });
   await row.getByRole("combobox").selectOption("admin_project");
-  await row.getByRole("button", { name: "Simpan peran" }).click();
+  await row.getByRole("button", { name: "Simpan akses" }).click();
   await expect(row.locator("span").filter({ hasText: /^Admin Project$/ })).toBeVisible();
 
   const viewerContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });

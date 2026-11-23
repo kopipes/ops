@@ -32,6 +32,7 @@ const project = (over: Partial<ProjectFacts> = {}): ProjectFacts => ({
   id: "p1",
   status: "active",
   ownerDivisionId: "d-evt",
+  ownerUserId: null,
   divisionIds: [],
   memberIds: ["u-crew"],
   leadIds: [],
@@ -71,12 +72,14 @@ describe("visibility (§2.2)", () => {
 });
 
 describe("project management (§2.2)", () => {
-  it("manager manages only projects owned by their division", () => {
+  it("Manager owner can manage without membership, other Managers cannot", () => {
     const mgr = user({ role: "manager" });
-    expect(canManageProject(mgr, project())).toBe(true);
-    expect(canManageProject(mgr, project({ ownerDivisionId: "d-other", divisionIds: ["d-evt"] }))).toBe(
-      false,
-    );
+    expect(canManageProject(mgr, project())).toBe(false);
+    const owned = project({ ownerUserId: mgr.id, memberIds: [] });
+    expect(canViewProject(mgr, owned)).toBe(true);
+    expect(canManageProject(mgr, owned)).toBe(true);
+    expect(canAssignMembers(mgr, owned)).toBe(true);
+    expect(canManageProject({ ...mgr, role: "user" }, owned)).toBe(false);
   });
 
   it("an additional project division does NOT grant management", () => {

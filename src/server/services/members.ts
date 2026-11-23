@@ -5,13 +5,14 @@ import type { ProjectRole } from "@/lib/project-roles";
  * Membership is what grants *write* access to a project (§2.1), so these
  * mutations are gated on canManageProject / canAssignMembers.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { auditLogs, projectMembers, userDivisions, users } from "@/server/db/schema";
+import { auditLogs, projectMembers, projects, userDivisions, users } from "@/server/db/schema";
 import type * as schema from "@/server/db/schema";
 import { canAssignMembers, type ActingUser } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "./checklist-items";
+import { currentProjectAccess } from "./project-access";
 import { loadFacts } from "./projects";
 
 type DB = BetterSQLite3Database<typeof schema>;
@@ -48,9 +49,14 @@ export async function listMembers(db: DB, projectId: string): Promise<MemberRow[
     })
     .from(projectMembers)
     .innerJoin(users, eq(users.id, projectMembers.userId))
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     // Removed members are soft-deleted (§9.5): hidden here, but their historical
     // reports keep the author because those reference the user id directly.
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.isActive, true)))
+    .where(and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.isActive, true),
+      sql`${projectMembers.userId} IS NOT ${projects.createdBy}`,
+    ))
     .orderBy(asc(users.name));
 
   if (rows.length === 0) return [];
@@ -107,7 +113,7 @@ export async function listMemberCandidates(db: DB, projectId: string): Promise<C
   const existing = new Set(facts.memberIds);
 
   return all
-    .filter((u) => !existing.has(u.id))
+    .filter((u) => u.id !== facts.ownerUserId && !existing.has(u.id))
     .map((u) => {
       const divs = divisions.filter((d) => d.userId === u.id).map((d) => d.divisionId);
       return {
@@ -122,10 +128,14 @@ export async function listMemberCandidates(db: DB, projectId: string): Promise<C
     });
 }
 
-async function assertCanAssign(db: DB, user: ActingUser, projectId: string) {
-  const facts = await loadFacts(db, projectId);
-  if (!canAssignMembers(user, facts)) throw new ForbiddenError();
+function assertCanAssign(db: DB, actor: ActingUser, projectId: string) {
+  const { user, facts } = currentProjectAccess(db, actor, projectId);
+  if (!canAssignMembers(user, facts)) throw new ForbiddenError("Hanya Owner atau Admin yang dapat mengelola member");
   return facts;
+}
+
+function assertMemberIsNotOwner(ownerUserId: string | null, targetUserId: string) {
+  if (ownerUserId === targetUserId) throw new ValidationError("Akses Owner tidak diubah dari daftar member");
 }
 
 export async function addMember(
@@ -135,33 +145,36 @@ export async function addMember(
   targetUserId: string,
   roleInProject: ProjectRole,
 ): Promise<void> {
-  await assertCanAssign(db, user, projectId);
+  db.transaction((tx) => {
+    const { ownerUserId } = assertCanAssign(tx, user, projectId);
+    assertMemberIsNotOwner(ownerUserId, targetUserId);
 
-  const target = await db
-    .select({ id: users.id, isActive: users.isActive })
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .get();
-  if (!target) throw new ValidationError("User tidak ditemukan");
-  if (!target.isActive) throw new ValidationError("User nonaktif tidak bisa ditambahkan");
+    const target = tx
+      .select({ id: users.id, isActive: users.isActive })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .get();
+    if (!target) throw new ValidationError("User tidak ditemukan");
+    if (!target.isActive) throw new ValidationError("User nonaktif tidak bisa ditambahkan");
 
-  const now = Date.now();
-  await db
-    .insert(projectMembers)
-    .values({
-      projectId,
-      userId: targetUserId,
-      roleInProject,
-      isActive: true,
-      addedBy: user.id,
-      createdAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [projectMembers.projectId, projectMembers.userId],
-      set: { roleInProject, isActive: true },
-    });
+    const now = Date.now();
+    tx
+      .insert(projectMembers)
+      .values({
+        projectId,
+        userId: targetUserId,
+        roleInProject,
+        isActive: true,
+        addedBy: user.id,
+        createdAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [projectMembers.projectId, projectMembers.userId],
+        set: { roleInProject, isActive: true },
+      }).run();
 
-  await audit(db, user, "project.member_added", projectId, { userId: targetUserId, roleInProject });
+    audit(tx, user, "project.member_added", projectId, { userId: targetUserId, roleInProject });
+  }, { behavior: "immediate" });
 }
 
 /** Soft-removal: is_active = 0, so historical reports keep their author. */
@@ -171,21 +184,24 @@ export async function removeMember(
   projectId: string,
   targetUserId: string,
 ): Promise<void> {
-  await assertCanAssign(db, user, projectId);
+  db.transaction((tx) => {
+    const { ownerUserId } = assertCanAssign(tx, user, projectId);
+    assertMemberIsNotOwner(ownerUserId, targetUserId);
 
-  const row = await db
-    .select({ isActive: projectMembers.isActive })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
-    .get();
-  if (!row) throw new ValidationError("Member tidak ditemukan");
+    const row = tx
+      .select({ isActive: projectMembers.isActive })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
+      .get();
+    if (!row) throw new ValidationError("Member tidak ditemukan");
 
-  await db
-    .update(projectMembers)
-    .set({ isActive: false })
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)));
+    tx
+      .update(projectMembers)
+      .set({ isActive: false })
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId))).run();
 
-  await audit(db, user, "project.member_removed", projectId, { userId: targetUserId });
+    audit(tx, user, "project.member_removed", projectId, { userId: targetUserId });
+  }, { behavior: "immediate" });
 }
 
 /** Promoting a member to lead is how §4.6 "Head Crew" is granted. */
@@ -196,28 +212,31 @@ export async function setMemberRole(
   targetUserId: string,
   roleInProject: ProjectRole,
 ): Promise<void> {
-  await assertCanAssign(db, user, projectId);
+  db.transaction((tx) => {
+    const { ownerUserId } = assertCanAssign(tx, user, projectId);
+    assertMemberIsNotOwner(ownerUserId, targetUserId);
 
-  const row = await db
-    .select({ isActive: projectMembers.isActive })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
-    .get();
-  if (!row || !row.isActive) throw new ValidationError("Member aktif tidak ditemukan");
+    const row = tx
+      .select({ isActive: projectMembers.isActive })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
+      .get();
+    if (!row || !row.isActive) throw new ValidationError("Member aktif tidak ditemukan");
 
-  await db
-    .update(projectMembers)
-    .set({ roleInProject })
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)));
+    tx
+      .update(projectMembers)
+      .set({ roleInProject })
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId))).run();
 
-  await audit(db, user, "project.member_role_changed", projectId, {
-    userId: targetUserId,
-    roleInProject,
-  });
+    audit(tx, user, "project.member_role_changed", projectId, {
+      userId: targetUserId,
+      roleInProject,
+    });
+  }, { behavior: "immediate" });
 }
 
 /**
- * Replaces the whole member list in one shot (used by the wizard step 4).
+ * Replaces the project member list in one transaction.
  * Users present before but absent now are deactivated, never deleted.
  */
 export async function setMembers(
@@ -226,54 +245,57 @@ export async function setMembers(
   projectId: string,
   members: { userId: string; roleInProject: ProjectRole }[],
 ): Promise<void> {
-  await assertCanAssign(db, user, projectId);
+  db.transaction((tx) => {
+    const { ownerUserId } = assertCanAssign(tx, user, projectId);
 
-  const wanted = new Map(members.map((m) => [m.userId, m.roleInProject]));
-  const existing = await db
-    .select({ userId: projectMembers.userId, roleInProject: projectMembers.roleInProject, isActive: projectMembers.isActive })
-    .from(projectMembers)
-    .where(eq(projectMembers.projectId, projectId));
+    for (const member of members) assertMemberIsNotOwner(ownerUserId, member.userId);
+    const wanted = new Map(members.map((m) => [m.userId, m.roleInProject]));
+    const existing = tx
+      .select({ userId: projectMembers.userId, roleInProject: projectMembers.roleInProject, isActive: projectMembers.isActive })
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, projectId)).all();
 
-  const now = Date.now();
+    const now = Date.now();
 
-  for (const [userId, role] of wanted) {
-    const row = existing.find((e) => e.userId === userId);
-    if (!row) {
-      await db.insert(projectMembers).values({
-        projectId,
-        userId,
-        roleInProject: role,
-        isActive: true,
-        addedBy: user.id,
-        createdAt: now,
-      });
-    } else if (!row.isActive || row.roleInProject !== role) {
-      await db
-        .update(projectMembers)
-        .set({ roleInProject: role, isActive: true })
-        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
+    for (const [userId, role] of wanted) {
+      const row = existing.find((e) => e.userId === userId);
+      if (!row) {
+        tx.insert(projectMembers).values({
+          projectId,
+          userId,
+          roleInProject: role,
+          isActive: true,
+          addedBy: user.id,
+          createdAt: now,
+        }).run();
+      } else if (!row.isActive || row.roleInProject !== role) {
+        tx
+          .update(projectMembers)
+          .set({ roleInProject: role, isActive: true })
+          .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).run();
+      }
     }
-  }
 
-  for (const row of existing) {
-    if (wanted.has(row.userId) || !row.isActive) continue;
-    await db
-      .update(projectMembers)
-      .set({ isActive: false })
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, row.userId)));
-  }
+    for (const row of existing) {
+      if (row.userId === ownerUserId || wanted.has(row.userId) || !row.isActive) continue;
+      tx
+        .update(projectMembers)
+        .set({ isActive: false })
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, row.userId))).run();
+    }
 
-  await audit(db, user, "project.members_set", projectId, { count: wanted.size });
+    audit(tx, user, "project.members_set", projectId, { count: wanted.size });
+  }, { behavior: "immediate" });
 }
 
-async function audit(
+function audit(
   db: DB,
   user: ActingUser,
   action: string,
   entityId: string,
   meta: Record<string, unknown>,
 ) {
-  await db.insert(auditLogs).values({
+  db.insert(auditLogs).values({
     id: randomUUID(),
     userId: user.id,
     action,
@@ -282,5 +304,5 @@ async function audit(
     metaJson: JSON.stringify(meta),
     ip: null,
     createdAt: Date.now(),
-  });
+  }).run();
 }

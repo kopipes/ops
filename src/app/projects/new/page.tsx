@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, ne, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
 import { ProjectWizard, type ChecklistRow } from "@/components/project/ProjectWizard";
 import { requireUser } from "@/server/auth/current-user";
@@ -99,7 +99,7 @@ export default async function NewProjectPage({
       role: users.role,
     })
     .from(users)
-    .where(eq(users.isActive, true))
+    .where(and(eq(users.isActive, true), ne(users.id, session.user.id)))
     .orderBy(asc(users.name));
 
   const memberDivisionRows = await db

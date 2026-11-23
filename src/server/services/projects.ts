@@ -195,11 +195,6 @@ export interface CreateProjectResult {
   days: DaySyncResult;
 }
 
-export function initialProjectMembers(user:ActingUser,members:ProjectInput["members"]) {
-  return isManager(user) && !members.some(m=>m.userId===user.id)
-    ? [...members,{userId:user.id,roleInProject:"lead" as const}] : members;
-}
-
 export async function createProject(
   db: DB,
   user: ActingUser,
@@ -248,8 +243,7 @@ export async function createProject(
     await db.insert(projectDivisions).values({ projectId: id, divisionId }).onConflictDoNothing();
   }
 
-  // A manager who creates a project remains explicitly involved in it.
-  const members = initialProjectMembers(user,input.members);
+  const members = input.members.filter((member) => member.userId !== user.id);
   for (const m of members) {
     await db
       .insert(projectMembers)
@@ -275,7 +269,7 @@ export async function createProject(
   await audit(db, user, "project.created", id, {
     code: input.code,
     status: input.saveAsDraft ? "draft" : "active",
-    members: input.members.length,
+    members: members.length,
     days: days.inserted,
   });
 
@@ -312,7 +306,7 @@ export async function updateProject(
     );
   }
 
-  // Owner division changes are admin-only (it changes who can manage the project).
+  // The project Owner and the organizational division are separate. Only Admin can change the division.
   if (current.ownerDivisionId !== input.ownerDivisionId && !isAdmin(user)) {
     throw new ForbiddenError("Hanya Admin yang bisa mengubah divisi owner");
   }
@@ -500,13 +494,13 @@ export async function softDeleteProject(
 
 export async function loadFacts(db: DB, projectId: string): Promise<ProjectFacts> {
   const p = await db
-    .select({ id: projects.id, status: projects.status, ownerDivisionId: projects.ownerDivisionId })
+    .select({ id: projects.id, status: projects.status, ownerDivisionId: projects.ownerDivisionId, ownerUserId: projects.createdBy })
     .from(projects)
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .get();
   if (!p) throw new ValidationError("Project tidak ditemukan");
 
-  const [divs, members] = await Promise.all([
+  const [divs, memberRows] = await Promise.all([
     db
       .select({ divisionId: projectDivisions.divisionId })
       .from(projectDivisions)
@@ -517,10 +511,12 @@ export async function loadFacts(db: DB, projectId: string): Promise<ProjectFacts
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.isActive, true))),
   ]);
 
+  const members = memberRows.filter((member) => member.userId !== p.ownerUserId);
   return {
     id: p.id,
     status: p.status,
     ownerDivisionId: p.ownerDivisionId,
+    ownerUserId: p.ownerUserId,
     divisionIds: divs.map((d) => d.divisionId),
     memberIds: members.map((m) => m.userId),
     leadIds: members.filter((m) => m.role === "lead").map((m) => m.userId),

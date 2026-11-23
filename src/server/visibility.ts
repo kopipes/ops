@@ -6,7 +6,7 @@
  * division match leak project membership semantics). Every project-scoped
  * query must go through `visibleProjectIds()`.
  */
-import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   projectDivisions,
@@ -15,20 +15,22 @@ import {
 } from "./db/schema";
 import type * as schema from "./db/schema";
 import type { ActingUser, ProjectFacts } from "./permissions";
-import { isGlobalViewer } from "./permissions";
+import { isGlobalViewer, isManager } from "./permissions";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
 /**
  * Predicate: project row is visible to this user.
- * Admin/Corporate see all; every other role requires active membership.
+ * Admin/Corporate see all. Other accounts see active memberships and Manager-owned projects.
  */
 export function visibleProjectPredicate(u: ActingUser, workspaceOnly = false): SQL | undefined {
   if (u.isActive && isGlobalViewer(u)) return undefined; // no filter
   if (!u.isActive) return sql`0 = 1`;
-  return sql`EXISTS (SELECT 1 FROM ${projectMembers} pm
+  const membership = sql`EXISTS (SELECT 1 FROM ${projectMembers} pm
     WHERE pm.project_id = ${projects.id} AND pm.user_id = ${u.id} AND pm.is_active = 1
+      AND pm.user_id IS NOT ${projects.createdBy}
       ${workspaceOnly ? sql`AND pm.role_in_project <> 'admin_project'` : undefined})`;
+  return isManager(u) ? or(eq(projects.createdBy, u.id), membership) : membership;
 }
 
 /**
@@ -65,6 +67,7 @@ export async function loadProjectFacts(
       id: projects.id,
       status: projects.status,
       ownerDivisionId: projects.ownerDivisionId,
+      ownerUserId: projects.createdBy,
     })
     .from(projects)
     .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)));
@@ -88,6 +91,7 @@ export async function loadProjectFacts(
       id: p.id,
       status: p.status,
       ownerDivisionId: p.ownerDivisionId,
+      ownerUserId: p.ownerUserId,
       divisionIds: [],
       memberIds: [],
       leadIds: [],
@@ -97,7 +101,7 @@ export async function loadProjectFacts(
   for (const d of divs) out.get(d.projectId)?.divisionIds.push(d.divisionId);
   for (const m of members) {
     const f = out.get(m.projectId);
-    if (!f) continue;
+    if (!f || f.ownerUserId === m.userId) continue;
     f.memberIds.push(m.userId);
     if (m.role === "lead") f.leadIds.push(m.userId);
     if (m.role === "admin_project") f.adminProjectIds.push(m.userId);
@@ -112,6 +116,6 @@ export function adminProjectReportIds(db: DB, user: ActingUser): string[] {
   return db.select({ id: projects.id }).from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.isActive, true),
-      eq(projectMembers.roleInProject, "admin_project"), isNull(projects.deletedAt)))
+      eq(projectMembers.roleInProject, "admin_project"), sql`${projectMembers.userId} IS NOT ${projects.createdBy}`, isNull(projects.deletedAt)))
     .all().map((row) => row.id);
 }

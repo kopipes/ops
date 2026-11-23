@@ -6,3 +6,9 @@ export const projectRoleLabel: Record<ProjectRole, string> = {
   lead: "Head Crew",
   admin_project: "Admin Project",
 };
+
+export const projectRoleOptionLabel: Record<ProjectRole, string> = {
+  crew: "Crew · Isi laporan",
+  lead: "Head Crew · Isi opening dan closing",
+  admin_project: "Admin Project · Lihat dan unduh laporan",
+};

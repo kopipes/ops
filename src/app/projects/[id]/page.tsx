@@ -14,13 +14,14 @@ import {
   projectDays,
   projects,
   reports,
+  users,
 } from "@/server/db/schema";
 import { loadFacts, listActiveProjectDays } from "@/server/services/projects";
 import { listProjectChecklist } from "@/server/services/project-checklist";
 import { listMembers, listMemberCandidates } from "@/server/services/members";
 import { canDeleteProject, canExportPdf, canManageProject, canSubmitPhase, canViewProject, isReportOnlyProjectMember } from "@/server/permissions";
 import { formatReportTimestamp, toLocalDate } from "@/lib/datetime";
-import { PROJECT_ROLES, projectRoleLabel } from "@/lib/project-roles";
+import { PROJECT_ROLES, projectRoleLabel, projectRoleOptionLabel } from "@/lib/project-roles";
 import { PHASES, phaseLabel } from "@/lib/schemas";
 import { checklistEditVersion, listProjectChecklistHistory } from "@/server/services/project-checklist-editor";
 import { getGlobalSettings, isWindowEnabled } from "@/server/services/app-settings";
@@ -87,7 +88,7 @@ export default async function ProjectDetailPage({
     return (
       <AppShell contentWidth="form">
         <h1>{project.name}</h1>
-        <p className="mb-4 text-sm text-[var(--muted)]">{project.code} · Admin Project</p>
+        <p className="mb-4 text-sm text-[var(--muted)]">{project.code} · Admin Project (akses laporan)</p>
         <Link className="btn-primary mb-4" href={`/reports?${reportFilters}`}>Lihat laporan harian</Link>
         <section className="surface-card p-4">
           <h2 className="section-title mb-3">Rekap project</h2>
@@ -106,7 +107,7 @@ export default async function ProjectDetailPage({
   }
   const settings = await getGlobalSettings(db);
 
-  const [days, checklist, members, ownerDivision] = await Promise.all([
+  const [days, checklist, members, ownerDivision, owner] = await Promise.all([
     listActiveProjectDays(db, id),
     tab === "checklist" ? listProjectChecklist(db, id) : [],
     listMembers(db, id),
@@ -115,6 +116,7 @@ export default async function ProjectDetailPage({
       .from(divisions)
       .where(eq(divisions.id, project.ownerDivisionId))
       .get(),
+    project.createdBy ? db.select({ name: users.name }).from(users).where(eq(users.id, project.createdBy)).get() : undefined,
   ]);
 
   const editingChecklist = tab === "checklist" && canManage && edit === "1";
@@ -158,6 +160,7 @@ export default async function ProjectDetailPage({
             <p className="text-xs" style={{ color: "var(--muted)" }}>
               {project.startDate} → {project.endDate} · {ownerDivision?.name}
             </p>
+            {owner ? <p className="mt-1 text-sm text-[var(--muted)]"><span className="font-semibold">Owner:</span> {owner.name}</p> : null}
           </div>
           <span
             className="shrink-0 rounded-full px-2 py-0.5 text-[11px]"
@@ -460,6 +463,7 @@ export default async function ProjectDetailPage({
       {/* ---------------- Members ---------------- */}
       {tab === "members" ? (
         <section>
+          <h2 className="section-title mb-3">Akses member</h2>
           <ul className="flex flex-col gap-2">
             {members.map((m) => (
               <li
@@ -485,10 +489,10 @@ export default async function ProjectDetailPage({
                     <form action={setMemberRoleAction} className="flex flex-wrap gap-2">
                       <input type="hidden" name="projectId" value={id} />
                       <input type="hidden" name="userId" value={m.userId} />
-                      <select name="roleInProject" defaultValue={m.roleInProject} aria-label={`Peran ${m.name}`} className="min-h-11 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm">
-                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
+                      <select name="roleInProject" defaultValue={m.roleInProject} aria-label={`Akses ${m.name}`} className="min-h-11 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm">
+                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleOptionLabel[role]}</option>)}
                       </select>
-                      <button type="submit" className="btn-secondary">Simpan peran</button>
+                      <button type="submit" className="btn-secondary">Simpan akses</button>
                     </form>
                     <form action={removeMemberAction}>
                       <input type="hidden" name="projectId" value={id} />
@@ -541,14 +545,14 @@ export default async function ProjectDetailPage({
               </select>
               <select
                 name="roleInProject"
-                aria-label="Peran dalam project"
+                aria-label="Akses dalam project"
                 defaultValue="crew"
                 className="min-h-tap rounded-lg border px-3 text-sm"
                 style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
               >
-                {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleLabel[role]}</option>)}
+                {PROJECT_ROLES.map((role) => <option key={role} value={role}>{projectRoleOptionLabel[role]}</option>)}
               </select>
-              <p className="text-xs text-[var(--muted)]">Admin Project dapat melihat dan mengunduh laporan project ini.</p>
+              <p className="text-xs text-[var(--muted)]">Akses member berlaku di project ini. Admin Project hanya bisa melihat dan mengunduh laporan.</p>
               <button
                 type="submit"
                 className="min-h-tap rounded-lg px-4 py-2 text-sm font-medium text-white"
