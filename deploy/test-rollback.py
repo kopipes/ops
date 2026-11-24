@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 
-def exercise(reject_target, interrupt_stop=False, report_only=False):
+def exercise(reject_target, interrupt_stop=False, report_only=False, division_templates=False):
     with tempfile.TemporaryDirectory(prefix="ops-rollback-test-") as directory:
         root = Path(directory)
         source = Path(__file__).with_name("rollback.sh").read_text()
@@ -39,6 +39,8 @@ def exercise(reject_target, interrupt_stop=False, report_only=False):
                 connection.execute("CREATE TABLE state(value TEXT)")
                 connection.execute("INSERT INTO state VALUES(?)", (value,))
                 connection.execute("CREATE TABLE project_members(role_in_project TEXT, is_active INTEGER)")
+                if division_templates and database == live:
+                    connection.execute("CREATE TABLE division_checklist_templates(id TEXT)")
                 if report_only:
                     connection.execute("INSERT INTO project_members VALUES('admin_project', 1)")
         commands = {
@@ -72,7 +74,16 @@ printf '%s\\n' '{{"ok":true}}'
             file.write_text(contents)
             file.chmod(0o755)
         env = {**os.environ, "PATH": str(root / "bin") + ":" + os.environ["PATH"], "OPS_TEST_REJECT": "1" if reject_target else "0", "OPS_TEST_INTERRUPT_STOP": "1" if interrupt_stop else "0"}
-        result = subprocess.run(["bash", str(script), target, str(snapshot)], env=env, text=True, capture_output=True, timeout=30)
+        arguments = ["bash", str(script), target]
+        if not division_templates:
+            arguments.append(str(snapshot))
+        result = subprocess.run(arguments, env=env, text=True, capture_output=True, timeout=30)
+        if division_templates:
+            assert result.returncode != 0 and "predates division templates" in result.stderr
+            assert current.resolve().name == previous
+            assert "stop ops.service" not in (root / "service-calls.txt").read_text()
+            print("PASS: blocks old template writer before stopping Ops")
+            return
         failed = reject_target or interrupt_stop or report_only
         if report_only:
             assert "does not support active Admin Project" in result.stderr
@@ -98,3 +109,5 @@ exercise(True)
 
 exercise(False, True)
 exercise(False, report_only=True)
+
+exercise(False, division_templates=True)

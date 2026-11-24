@@ -207,7 +207,7 @@ const projectFieldsSchema = z.object({
   closingWindowEnd: z.string().regex(TIME_RE, "Format jam HH:MM"),
   saveAsDraft: z.boolean().default(false),
   /** Checklist source (§5.3). */
-  checklistSource: z.enum(["template", "project", "empty"]).default("template"),
+  checklistSource: z.enum(["template", "project", "empty"]).default("empty"),
   templateIds: z.array(z.string().min(1)).default([]),
   sourceProjectId: z
     .string()
@@ -241,6 +241,12 @@ const projectFieldsSchema = z.object({
 });
 
 export const projectInputSchema = projectFieldsSchema
+  .refine((v) => v.checklistSource !== "template" || v.templateIds.length === 1, {
+    message: "Pilih satu template divisi.", path: ["templateIds"],
+  })
+  .refine((v) => v.checklistSource !== "project" || Boolean(v.sourceProjectId), {
+    message: "Pilih project sumber.", path: ["sourceProjectId"],
+  })
   .refine((v) => v.endDate >= v.startDate, {
     message: "Tanggal selesai tidak boleh sebelum tanggal mulai",
     path: ["endDate"],

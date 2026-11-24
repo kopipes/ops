@@ -104,6 +104,9 @@ sudo bash /opt/ops/current/deploy/rollback.sh PREVIOUS_40_CHARACTER_SHA /var/bac
 Releases that predate the Admin Project role cannot safely use a database with
 active Admin Project memberships. Run the rollback script from the current
 release so it can check the target and the database before starting older code.
+For databases with migration 0010 applied, choose a target that supports division
+templates. Earlier releases require an explicit matching pre-migration snapshot
+because their template writes would land in the legacy tables.
 
 The script backs up the current DB first. It stops/restarts only Ops; it does not
 restart databases, change shared ports, or restore whole-host config snapshots.

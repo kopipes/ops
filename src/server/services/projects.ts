@@ -230,7 +230,12 @@ export async function createProject(
     assertProjectCodeAvailable(tx, input.code);
 
     const templateIds = input.checklistSource === "template" ? input.templateIds : [];
-    if (templateIds.length > 1) throw new ValidationError("Pilih satu template divisi.");
+    if (input.checklistSource === "template" && templateIds.length !== 1) {
+      throw new ValidationError("Pilih satu template divisi.");
+    }
+    if (input.checklistSource === "project" && (!initialChecklist || !input.sourceProjectId)) {
+      throw new ValidationError("Pilih project sumber.");
+    }
     const template = templateIds[0]
       ? readProjectTemplate(tx, user, templateIds[0], input.ownerDivisionId)
       : null;

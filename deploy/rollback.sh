@@ -40,6 +40,13 @@ if [[ -n $snapshot ]]; then
   [[ $snapshot == /var/backups/ops/* && -f $snapshot ]]
   [[ $(sqlite3 "$snapshot" 'PRAGMA integrity_check;') == ok ]]
 fi
+if [[ ! -f $target/src/server/db/migrations/0010_division_checklist_templates.sql ]]; then
+  template_db=${snapshot:-/var/lib/ops/data/ops.db}
+  if [[ $(sqlite3 -readonly "$template_db" "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='division_checklist_templates');") != 0 ]]; then
+    echo "Target release predates division templates. Use a matching pre-migration backup or a compatible target." >&2
+    exit 1
+  fi
+fi
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="/var/backups/ops/pre-rollback-$stamp"
 install -d -m 0700 "$backup"

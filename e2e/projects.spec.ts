@@ -43,7 +43,7 @@ async function createProjectViaWizard(
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // Step 2: divisions (owner preselected)
-  await expect(page.getByLabel("Divisi owner")).toBeVisible();
+  await expect(page.getByLabel("Divisi owner", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // Step 3: checklist — pick the first template if requested.

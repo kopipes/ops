@@ -54,8 +54,9 @@ test("used user is archived, hidden by default, and loses their session; Manager
   await login(page);await expect(page).toHaveURL(`${BASE}/`);await page.goto(`${BASE}/admin/users`);
   const suffix=Date.now(),name=`Archive user ${suffix}`,email=`archive-${suffix}@example.test`;
   await page.getByRole("button",{name:"+ User",exact:true}).click();await page.getByLabel("Nama",{exact:true}).fill(name);await page.getByLabel("Email",{exact:true}).fill(email);await page.getByLabel("Password awal (min. 8 karakter)").fill("Temporary2026!");await page.getByRole("button",{name:"Buat user",exact:true}).click();
-  await login(crew,email,"Temporary2026!");await expect(crew).toHaveURL(/\/me\/password/);
-  const row=page.locator("li").filter({hasText:email});await remove(page,row,name,"archive");await page.getByLabel("Tampilkan user nonaktif").check();await expect(row.getByText("Nonaktif",{exact:true})).toBeVisible();
+  const row=page.locator("li").filter({hasText:email});
+  await expect(row).toBeVisible();
+  await login(crew,email,"Temporary2026!");await expect(crew).toHaveURL(/\/me\/password/);await remove(page,row,name,"archive");await page.getByLabel("Tampilkan user nonaktif").check();await expect(row.getByText("Nonaktif",{exact:true})).toBeVisible();
   await crew.goto(`${BASE}/`);await expect(crew).toHaveURL(/\/login/);
   await page.goto(`${BASE}/admin/audit`);await expect(page.getByText("user.archived",{exact:true}).first()).toBeVisible();
   await login(manager,"manager@ops.test");await expect(manager).toHaveURL(`${BASE}/`);

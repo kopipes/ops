@@ -104,7 +104,7 @@ export function ProjectWizard({
   const [step, setStep] = useState(0);
   const [ownerDivisionId, setOwnerDivisionId] = useState(defaultDivisionId);
   const [additional, setAdditional] = useState<string[]>([]);
-  const [source, setSource] = useState<"template" | "project" | "empty">("template");
+  const [source, setSource] = useState<"template" | "project">("template");
   const [templateId, setTemplateId] = useState("");
   const [templateVersion, setTemplateVersion] = useState(0);
   const [selectedRows, setSelectedRows] = useState<ChecklistRow[]>([]);
@@ -159,7 +159,7 @@ export function ProjectWizard({
   const canNext = (() => {
     if (step === 0) return true; // validated on submit
     if (step === 1) return Boolean(ownerDivisionId);
-    return !loadingChecklist && !checklistError;
+    return !loadingChecklist && !checklistError && (source !== "project" || Boolean(sourceProjectId));
   })();
 
   const addCustom = () => {
@@ -187,7 +187,7 @@ export function ProjectWizard({
       {additional.map((d) => (
         <input key={d} type="hidden" name="additionalDivisionIds" value={d} />
       ))}
-      <input type="hidden" name="checklistSource" value={source} />
+      <input type="hidden" name="checklistSource" value={source === "template" && !templateId ? "empty" : source} />
       <input type="hidden" name="templateIds" value={source === "template" ? templateId : ""} />
       <input type="hidden" name="templateVersion" value={templateVersion} />
       <input type="hidden" name="sourceProjectId" value={source === "project" ? sourceProjectId : ""} />
@@ -379,7 +379,6 @@ export function ProjectWizard({
             [
               ["template", "Template divisi"],
               ["project", "Salin dari project sebelumnya"],
-              ["empty", "Tanpa template"],
             ] as const
           ).map(([value, label]) => (
             <label key={value} className="flex min-h-tap items-center gap-2 text-sm">
@@ -405,11 +404,12 @@ export function ProjectWizard({
             <select id="wizard-template" value={templateId}
               onChange={(event) => void selectChecklist("template", event.target.value)}
               className={inputCls} style={inputStyle}>
-              <option value="">{divisionTemplates.length ? "Pilih template…" : "Belum ada template di divisi ini"}</option>
+              <option value="">Tanpa template</option>
               {divisionTemplates.map((template) => (
                 <option key={template.id} value={template.id}>{template.name} · {template.itemCount} poin</option>
               ))}
             </select>
+            {!divisionTemplates.length ? <p className="text-xs text-[var(--muted)]">Belum ada template di divisi ini.</p> : null}
           </div>
         ) : null}
 
