@@ -8,7 +8,7 @@ import { getDailySummary } from "@/server/services/reports-review";
 import { adminProjectReportIds, visibleProjectIds } from "@/server/visibility";
 import { isAdmin, isCorporate, isManager } from "@/server/permissions";
 import { getGlobalSettings } from "@/server/services/app-settings";
-import { toLocalDate } from "@/lib/datetime";
+import { addDays, toLocalDate } from "@/lib/datetime";
 import { Icon, MetricCard, PageHeader } from "@/components/ui/WorkspaceUI";
 
 export const metadata = { title: "Report — Pulse" };
@@ -19,6 +19,18 @@ const STATUS_FILTERS = [
   { key: "critical", label: "Ada issue High/Critical" },
   { key: "unreviewed", label: "Belum direview" },
 ] as const;
+
+const PERIODS = [
+  { days: 7, label: "7 hari terakhir" },
+  { days: 30, label: "30 hari terakhir" },
+  { days: 1, label: "Hari ini" },
+] as const;
+
+function readDate(value: string | undefined): string | undefined {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value) return value;
+}
 
 function timeInZone(at: number | null, timeZone: string): string {
   if (!at) return "";
@@ -70,20 +82,16 @@ export default async function ReportsPage({
   }
 
   const params = await searchParams;
-  /*
-   * Default the date filter to "today" in the default project timezone, the
-   * same clock the project wizard uses for its date defaults. Using UTC here
-   * showed an empty list between 17:00–24:00 UTC for teams working on WIB.
-   */
   const settings = await getGlobalSettings(db);
   const today = toLocalDate(Date.now(), settings.defaultTimezone);
-  const from = params.from ?? today;
-  const to = params.to ?? today;
+  const to = readDate(params.to) ?? today;
+  const from = readDate(params.from) ?? addDays(to, -6);
+  const invalidRange = from > to;
   const status = STATUS_FILTERS.some((f) => f.key === params.status)
     ? (params.status as "incomplete" | "critical" | "unreviewed")
     : undefined;
 
-  const ids = canSeeAllVisibleReports ? await visibleProjectIds(db, session.user) : assignedReportIds;
+  const ids = canSeeAllVisibleReports ? await visibleProjectIds(db, session.user, { includeArchived: true }) : assignedReportIds;
   const rows = await getDailySummary(db, ids, {
     from,
     to,
@@ -113,7 +121,7 @@ export default async function ReportsPage({
     <AppShell>
       <PageHeader eyebrow="REPORTS & INSIGHTS" title="Report Harian" description="Tinjau kelengkapan laporan dan progres setiap project, setiap hari." action={<Link href="/dashboard" className="btn-secondary">Dashboard<Icon name="arrow" size={16} /></Link>} />
       <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <MetricCard label="Laporan harian" value={rows.length} icon="layers" hint="Sesuai periode dan filter" />
+        <MetricCard label="Hari project" value={rows.length} icon="layers" hint="Sesuai periode dan filter" />
         <MetricCard label="Opening & closing terisi" value={rows.filter(r => r.opening && r.closing).length} icon="check" tone="success" hint="Kedua laporan tersedia" />
         <MetricCard label="Belum direview" value={rows.filter(r => !r.reviewedAt || r.changedSinceReview).length} icon="clock" tone="neutral" hint="Menunggu pemeriksaan" />
         <MetricCard label="Perlu perhatian" value={rows.filter(r => r.hasCriticalOpen).length} icon="alert" tone="warning" hint="Memiliki issue High / Critical" />
@@ -121,28 +129,29 @@ export default async function ReportsPage({
 
       {/* §7.1 filters */}
       <form
+        key={`${from}:${to}:${params.divisionId ?? ""}:${params.projectId ?? ""}`}
         action="/reports"
         method="get"
         className="surface-card mb-4 flex flex-col gap-3 p-4 lg:flex-row lg:flex-wrap lg:items-end"
       >
         <div className="grid grid-cols-2 gap-2 lg:contents">
-          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
+          <label className="flex min-w-0 flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Dari
             <input
               type="date"
               name="from"
               defaultValue={from}
-              className="min-h-[40px] rounded-lg border px-2 text-sm"
+              className="min-h-[40px] min-w-0 rounded-lg border px-2 text-sm"
               style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
+          <label className="flex min-w-0 flex-col gap-1 text-xs lg:w-44" style={{ color: "var(--muted)" }}>
             Sampai
             <input
               type="date"
               name="to"
               defaultValue={to}
-              className="min-h-[40px] rounded-lg border px-2 text-sm"
+              className="min-h-[40px] min-w-0 rounded-lg border px-2 text-sm"
               style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--fg)" }}
             />
           </label>
@@ -192,6 +201,19 @@ export default async function ReportsPage({
         </button>
       </form>
 
+      <nav aria-label="Periode laporan" className="mb-4 flex flex-wrap gap-2">
+        {PERIODS.map(({ days, label }) => {
+          const start = addDays(today, 1 - days);
+          const active = from === start && to === today;
+          return (
+            <Link key={days} href={qs({ from: start, to: today })} aria-current={active ? "true" : undefined}
+              className={`rounded-xl border px-3 py-2 text-sm ${active ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--border)] bg-[var(--surface)]"}`}>
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+
       <div className="mb-3 flex flex-wrap gap-1">
         {STATUS_FILTERS.map((f) => {
           const active = (params.status ?? "all") === f.key;
@@ -218,7 +240,7 @@ export default async function ReportsPage({
           className="rounded-xl border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--muted)" }}
         >
-          Tidak ada data untuk filter ini.
+          {invalidRange ? "Tanggal Dari tidak boleh sesudah tanggal Sampai." : "Tidak ada data untuk periode dan filter ini."}
         </p>
       ) : (
         <>

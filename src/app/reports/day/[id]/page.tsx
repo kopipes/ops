@@ -148,6 +148,9 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
 
   const tz = detail.project.timezone;
   const galleryByPhase = (phase: string) => detail.gallery.filter((g) => g.phase === phase);
+  const historyHref = detail.canViewIssues
+    ? `/projects/${detail.project.id}?tab=days`
+    : `/reports?${new URLSearchParams({ projectId: detail.project.id, from: detail.day.date, to: detail.day.date })}`;
 
   return (
     <AppShell>
@@ -156,8 +159,8 @@ export default async function DayDetailPage({ params,searchParams }: { params: P
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
       <div className="min-w-0">
       <header className="mb-4">
-        <Link href="/reports" className="text-xs" style={{ color: "var(--muted)" }}>
-          ← Report
+        <Link href={historyHref} className="text-xs" style={{ color: "var(--muted)" }}>
+          ← Riwayat laporan
         </Link>
         <h1 className="mt-1 text-xl font-semibold">{detail.project.name}</h1>
         <p className="text-xs" style={{ color: "var(--muted)" }}>

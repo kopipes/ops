@@ -5,6 +5,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { today, waitForHydration } from "./helpers";
+import { addDays } from "../src/lib/datetime";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
@@ -33,14 +34,18 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL(`${BASE}/`);
 }
 
-/** Creates a project today with a template, crew as member. Returns project id. */
-async function createTodayProject(page: Page, name: string) {
+/** Creates a one-day project with a template and a Crew member. */
+async function createTodayProject(page: Page, name: string, date?: string) {
   await page.goto(`${BASE}/projects/new`);
   const visible = page.locator("section:not([hidden])");
 
   await page.getByLabel("Kode project").fill(uniqueCode());
   await page.getByLabel("Nama project").fill(name);
   await page.getByLabel("Venue").fill("JCC");
+  if (date) {
+    await page.getByLabel("Tanggal mulai", { exact: true }).fill(date);
+    await page.getByLabel("Tanggal selesai", { exact: true }).fill(date);
+  }
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await visible.locator('fieldset input[type="checkbox"]').first().check();
@@ -56,8 +61,8 @@ async function createTodayProject(page: Page, name: string) {
 
 
 /** Answers all opening items OK, attaching a photo where a file input exists. */
-async function submitOpening(page: Page, projectId: string) {
-  await page.goto(`${BASE}/projects/${projectId}/days/${today()}/opening`);
+async function submitOpening(page: Page, projectId: string, date = today()) {
+  await page.goto(`${BASE}/projects/${projectId}/days/${date}/opening`);
   const cards = page.locator("li", { has: page.getByRole("button", { name: "OK", exact: true }) });
   const count = await cards.count();
   for (let i = 0; i < count; i++) {
@@ -214,7 +219,7 @@ test("corporate can review but not manage (§2.3)", async ({ page, browser }) =>
 test("crew cannot open the report page (§12)", async ({ page }) => {
   await login(page, "crew@ops.test");
   await page.goto(`${BASE}/reports`);
-  await expect(page.getByText(/hanya untuk Manager, Corporate, dan Admin/)).toBeVisible();
+  await expect(page.getByText("Akun ini belum memiliki akses ke ringkasan report.")).toBeVisible();
 });
 
 test("dashboard shows counters and needs-attention (§7.3)", async ({ page }) => {
@@ -245,4 +250,45 @@ test("report list filters by unreviewed status (§7.1)", async ({ page }) => {
 
   await page.goto(`${BASE}/reports?status=all`);
   await expect(page.getByRole("link", { name: new RegExp(name) }).first()).toBeVisible();
+});
+
+
+test("older reports are visible by default and Crew can open them from project history", async ({ page, browser }) => {
+  await login(page, "manager@ops.test");
+  const yesterday = addDays(today(), -1);
+  const name = `Riwayat project ${Date.now()}`;
+  const projectId = await createTodayProject(page, name, yesterday);
+  await submitOpening(page, projectId, yesterday);
+
+  await page.goto(`${BASE}/reports`);
+  await expect(page.getByRole("link", { name: "7 hari terakhir" })).toHaveAttribute("aria-current", "true");
+  const row = page.locator("main > ul > li", { hasText: name });
+  await expect(row).toContainText(yesterday);
+  await expect(row).toContainText("Terisi");
+  await page.getByRole("link", { name: "Hari ini", exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await expect(page.getByLabel("Dari", { exact: true })).toHaveValue(today());
+  await page.getByRole("link", { name: "30 hari terakhir" }).click();
+  await expect(row).toBeVisible();
+
+  const crewContext = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  try {
+    const crew = await crewContext.newPage();
+    await login(crew, "crew@ops.test");
+    await crew.goto(`${BASE}/projects/${projectId}?tab=days`);
+    await crew.getByRole("link", { name: `Lihat laporan ${yesterday}`, exact: true }).click();
+    await expect(crew.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(crew.getByText("Area venue bersih dan siap dipakai", { exact: true })).toBeVisible();
+    await crew.getByRole("link", { name: /Riwayat laporan/ }).click();
+    await expect(crew.getByRole("link", { name: `Lihat laporan ${yesterday}`, exact: true })).toBeVisible();
+  } finally {
+    await crewContext.close();
+  }
+
+  await page.goto(`${BASE}/projects/${projectId}?tab=settings`);
+  await page.getByLabel("Status project", { exact: true }).selectOption("archived");
+  await page.getByRole("button", { name: "Simpan status", exact: true }).click();
+  await expect(page.getByText("Arsip", { exact: true }).filter({ visible: true })).toBeVisible();
+  await page.goto(`${BASE}/reports`);
+  await expect(row).toBeVisible();
 });

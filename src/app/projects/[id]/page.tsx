@@ -323,6 +323,13 @@ export default async function ProjectDetailPage({
                         {d.reviewedAt ? " · reviewed" : ""}
                       </p>
                     </div>
+                    <Link
+                      href={`/reports/day/${d.id}`}
+                      aria-label={`Lihat laporan ${d.date}`}
+                      className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-[var(--border)] px-2 text-xs font-medium text-[var(--accent)]"
+                    >
+                      Lihat laporan
+                    </Link>
                   </div>
 
                   {canManage ? (
