@@ -46,12 +46,9 @@ async function createProjectViaWizard(
   await expect(page.getByLabel("Divisi owner", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
-  // Step 3: checklist — pick the first template if requested.
-  // Scope to the visible section: hidden steps still contain checkboxes.
-  const visible = page.locator("section:not([hidden])");
+  // Step 3: select the seeded division template and wait for its preview.
   if (opts.template !== false) {
     await page.getByLabel("Template untuk divisi owner").selectOption("demo-division-tpl-standard");
-    // Wait for the preview to render so hidden cl_* fields exist.
     await expect(page.getByRole("checkbox", { name: "Sertakan Area venue bersih dan siap dipakai", exact: true })).toBeVisible();
   }
   await page.getByRole("button", { name: "Lanjut →" }).click();
@@ -129,7 +126,7 @@ test("checklist snapshot appears on the Checklist tab", async ({ page }) => {
   });
 
   await page.goto(`${url}?tab=checklist`);
-  await expect(page.getByText(/item aktif/)).toBeVisible();
+  await expect(page.getByText(/25 poin aktif/)).toBeVisible();
   // The seeded "Standar Event Harian" template's first opening item.
   await expect(page.getByText("Area venue bersih dan siap dipakai").first()).toBeVisible();
 });
@@ -192,7 +189,7 @@ test("crew cannot open the wizard (§12)", async ({ page }) => {
   await expect(page).toHaveURL(`${BASE}/`);
 });
 
-test("project visibility follows §2.2 for crew, multi-division and corporate", async ({
+test("project visibility allows Crew members and Corporate while blocking nonmembers", async ({
   page,
   browser,
 }) => {
@@ -216,7 +213,12 @@ test("project visibility follows §2.2 for crew, multi-division and corporate", 
     await expect(p2).toHaveURL(`${BASE}/`);
 
     await p2.goto(url);
-    await expect(p2.getByRole("navigation", { name: "Tab project" })).toBeVisible();
+    if (email === "multi@ops.test") {
+      await expect(p2).toHaveURL(`${BASE}/projects`);
+      await expect(p2.getByRole("navigation", { name: "Tab project" })).toHaveCount(0);
+    } else {
+      await expect(p2.getByRole("navigation", { name: "Tab project" })).toBeVisible();
+    }
     await ctx.close();
   }
 });
