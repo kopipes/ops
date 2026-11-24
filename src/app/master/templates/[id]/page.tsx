@@ -3,11 +3,12 @@ import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ChecklistEditor } from "@/components/project/ProjectChecklistEditor";
 import { DivisionTemplateUpload } from "@/components/master/DivisionTemplateUpload";
+import { DivisionTemplateRemoval } from "@/components/master/DivisionTemplateRemoval";
 import { DivisionTemplateStatusForm } from "@/components/master/DivisionTemplateStatusForm";
 import { saveDivisionTemplateAction } from "@/app/division-template-actions";
 import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
-import { canCreateProject } from "@/server/permissions";
+import { canCreateProject, isAdmin } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 import { readDivisionTemplate } from "@/server/services/division-templates";
 import { phaseLabel } from "@/lib/schemas";
@@ -54,6 +55,7 @@ export default async function TemplateDetailPage({
           {template.isActive || (template.divisionActive && template.rows.length) ? (
             <DivisionTemplateStatusForm id={id} version={template.version} active={template.isActive} />
           ) : null}
+          {isAdmin(user) ? <DivisionTemplateRemoval id={id} /> : null}
         </div>
         {canEdit ? (
           <details className="surface-card px-4 py-3" key={`excel-${template.version}`}>

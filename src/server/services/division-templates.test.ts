@@ -8,6 +8,7 @@ import * as schema from "@/server/db/schema";
 import type { ActingUser } from "@/server/permissions";
 import { projectInputSchema } from "@/lib/schemas";
 import { parseChecklistWorkbook, type ExcelChecklistRow } from "./checklist-import";
+import { removeData } from "./data-removal";
 import { createProject } from "./projects";
 import { divisionTemplateWorkbook } from "./division-template-workbook";
 import {
@@ -123,6 +124,34 @@ it("archives and restores a template while old project snapshots and flags stay 
   expect(listDivisionTemplates(db, manager, true)).toMatchObject([{ id: templateId, itemCount: 1 }]);
 });
 
+it.each([false, true])("deletes the template and preserves its submitted reports (archived=%s)", async (archived) => {
+  const templateId = upload();
+  const { projectId } = await createProject(db, manager, project(templateId), snapshotOptions(1));
+  raw.prepare(`
+    insert into reports (id,project_id,project_day_id,phase,submitted_by,client_submission_id,status,observed_at,created_at,updated_at)
+    select 'report',project_id,id,'opening','mgr','submission','submitted',1,1,1 from project_days where project_id=?
+  `).run(projectId);
+  raw.prepare(`
+    insert into report_check_results (id,report_id,project_checklist_item_id,result,created_at)
+    select 'result','report',id,'ok',1 from project_checklist_items where project_id=? and phase='opening'
+  `).run(projectId);
+  if (archived) setDivisionTemplateActive(db, manager, templateId, 1, false);
+  const template = readDivisionTemplate(db, admin, templateId);
+  removeData(db, admin, {
+    entity: "division_template", id: templateId, expectedMode: "delete", expectedVersion: template.version,
+    confirmation: template.name, reason: "Pembersihan template",
+  });
+  expect(listDivisionTemplates(db, admin)).toHaveLength(0);
+  expect(raw.prepare("select count(*) n from division_checklist_template_items").get()).toEqual({ n: 0 });
+  expect(raw.prepare("select status from reports where id='report'").get()).toEqual({ status: "submitted" });
+  expect(raw.prepare("select r.result, i.label from report_check_results r join project_checklist_items i on i.id=r.project_checklist_item_id").get())
+    .toEqual({ result: "ok", label: "Pintu masuk" });
+  expect(raw.prepare("select action from audit_logs where entity_id=? and action='template.used'").get(templateId))
+    .toEqual({ action: "template.used" });
+  await expect(createProject(db, admin, project(templateId, "d1", "AFTER-DELETE"), snapshotOptions(1))).rejects.toThrow(/tidak ditemukan/);
+  expect(raw.pragma("foreign_key_check")).toEqual([]);
+});
+
 it("exports a sample and an existing template in the supported Excel layout", async () => {
   await expect(parseChecklistWorkbook(Buffer.from(await divisionTemplateWorkbook()))).rejects.toThrow(/CONTOH/);
   const saved = readDivisionTemplate(db, manager, upload());
@@ -158,6 +187,12 @@ it("migrates used Global templates only to evidence-backed divisions and preserv
   const assigned = assignLegacyTemplate(db, admin, "unused", "d1", "");
   expect(readDivisionTemplate(db, manager, assigned).rows).toMatchObject([{ label: "Gerbang", requiresPhoto: true }]);
   expect(listUnassignedLegacyTemplates(db, admin)).toHaveLength(0);
+  removeData(db, admin, {
+    entity: "division_template", id: assigned, expectedMode: "delete", expectedVersion: 1,
+    confirmation: "Global tidak terpakai", reason: "Pembersihan template",
+  });
+  expect(listUnassignedLegacyTemplates(db, admin)).toHaveLength(0);
+  expect(() => assignLegacyTemplate(db, admin, "unused", "d1", "")).toThrow(/dihapus permanen/);
   expect(raw.prepare("select count(*) n from checklist_templates").get()).toEqual({ n: 3 });
   expect(raw.pragma("foreign_key_check")).toEqual([]);
 });

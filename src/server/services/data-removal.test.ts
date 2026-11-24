@@ -13,10 +13,10 @@ import { recordTemplateUsage } from "./templates";
 let raw: Database.Database;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 const admin: ActingUser = { id: "admin", role: "admin", isActive: true, divisionIds: ["base"] };
-const names = { user: "Unused user", division: "Unused division", checklist_item: "Unused item", checklist_category: "Unused category", issue_category: "Unused issue category", template: "Unused template" };
-const tables = { user: "users", division: "divisions", checklist_item: "checklist_items", checklist_category: "checklist_categories", issue_category: "issue_categories", template: "checklist_templates" };
+const names = { user: "Unused user", division: "Unused division", checklist_item: "Unused item", checklist_category: "Unused category", issue_category: "Unused issue category", template: "Unused template", division_template: "Division template" };
+const tables = { user: "users", division: "divisions", checklist_item: "checklist_items", checklist_category: "checklist_categories", issue_category: "issue_categories", template: "checklist_templates", division_template: "division_checklist_templates" };
 function remove(entity: RemovalEntity, expectedMode: "delete" | "archive" = "delete") {
-  return removeData(db, admin, { entity, id: entity, confirmation: names[entity], reason: "Cleanup requested", expectedMode });
+  return removeData(db, admin, { entity, id: entity, confirmation: names[entity], reason: "Cleanup requested", expectedMode, expectedVersion: entity === "division_template" ? 1 : undefined });
 }
 function project(over: Record<string, unknown> = {}) {
   raw.prepare("insert into projects (id,code,name,venue,start_date,end_date,owner_division_id,created_by,created_at,updated_at) values (?,?,?,?,?,?,?,?,1,1)").run(over.id ?? "project", over.code ?? "P1", "Historical project", "Venue", "2026-11-18", "2026-11-18", over.division ?? "base", over.user ?? "admin");
@@ -31,7 +31,8 @@ beforeEach(() => {
     insert into checklist_categories (id,name,created_at,updated_at) values ('base-category','Base category',1,1),('checklist_category','Unused category',1,1);
     insert into issue_categories (id,name,created_at,updated_at) values ('issue_category','Unused issue category',1,1);
     insert into checklist_items (id,label,phase,category_id,created_at,updated_at) values ('checklist_item','Unused item','opening','base-category',1,1);
-    insert into checklist_templates (id,name,created_at,updated_at) values ('template','Unused template',1,1);`);
+    insert into checklist_templates (id,name,created_at,updated_at) values ('template','Unused template',1,1);
+    insert into division_checklist_templates (id,division_id,name,created_at,updated_at) values ('division_template','base','Division template',1,1);`);
 });
 afterEach(() => raw.close());
 
@@ -46,7 +47,7 @@ describe("Admin data removal", () => {
   it.each(REMOVAL_ENTITIES)("rejects Manager preview and mutation for %s", entity => {
     const manager: ActingUser = {id:"manager",role:"manager",isActive:true,divisionIds:["base"]};
     expect(()=>previewDataRemoval(db,manager,entity,entity)).toThrow(/akses/i);
-    expect(()=>removeData(db,manager,{entity,id:entity,confirmation:names[entity],reason:"Cleanup",expectedMode:"delete"})).toThrow(/akses/i);
+    expect(()=>removeData(db,manager,{entity,id:entity,confirmation:names[entity],reason:"Cleanup",expectedMode:"delete",expectedVersion:1})).toThrow(/akses/i);
     expect(row(entity)).toBeDefined();
   });
   it.each(["user", "corporate", "manager"] as const)("rejects %s even with fabricated Admin identity", role => {
@@ -121,6 +122,23 @@ describe("Admin data removal", () => {
   it("rejects changed usage between preview and confirmation", () => {
     expect(previewDataRemoval(db,admin,"checklist_item","checklist_item").mode).toBe("delete");
     raw.exec("insert into checklist_template_items (template_id,checklist_item_id) values ('template','checklist_item')");expect(()=>remove("checklist_item")).toThrow(/berubah/);expect(row("checklist_item")).toMatchObject({is_active:1});
+  });
+  it("requires the version shown in the deletion dialog and preserves rows if the audit fails", () => {
+    raw.exec(`insert into division_checklist_template_items (id,template_id,phase,category_name,label)
+      values ('item','division_template','opening','Area','Pintu')`);
+    const preview = previewDataRemoval(db, admin, "division_template", "division_template");
+    expect(preview).toMatchObject({ mode: "delete", version: 1, references: 0 });
+    const request = {
+      entity: "division_template" as const, id: "division_template", confirmation: "Division template",
+      expectedMode: "delete" as const, reason: "Cleanup requested",
+    };
+    expect(() => removeData(db, admin, request)).toThrow(/Template sudah berubah/);
+    raw.exec("update division_checklist_templates set version=2");
+    expect(() => removeData(db, admin, { ...request, expectedVersion: preview.version })).toThrow(/Template sudah berubah/);
+    raw.exec("create trigger fail_template_audit before insert on audit_logs begin select raise(abort,'audit failure'); end");
+    expect(() => removeData(db, admin, { ...request, expectedVersion: 2 })).toThrow(/insert into audit_logs/);
+    expect(row("division_template")).toBeDefined();
+    expect(raw.prepare("select count(*) n from division_checklist_template_items").get()).toEqual({ n: 1 });
   });
   it("requires exact current name and a reason", () => {
     const input={entity:"division" as const,id:"division",confirmation:"wrong",reason:"Cleanup",expectedMode:"delete" as const};

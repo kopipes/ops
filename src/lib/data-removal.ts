@@ -1,4 +1,4 @@
-export const REMOVAL_ENTITIES = ["user", "division", "checklist_item", "checklist_category", "issue_category", "template"] as const;
+export const REMOVAL_ENTITIES = ["user", "division", "checklist_item", "checklist_category", "issue_category", "template", "division_template"] as const;
 export type RemovalEntity = typeof REMOVAL_ENTITIES[number];
 export type RemovalMode = "delete" | "archive";
 export interface RemovalPreview {
@@ -7,6 +7,7 @@ export interface RemovalPreview {
   name: string;
   mode: RemovalMode;
   references: number;
+  version?: number;
 }
 export interface RemovalState {
   error?: string;

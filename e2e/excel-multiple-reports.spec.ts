@@ -130,3 +130,64 @@ for (const width of [390, 1440]) {
   await page.goto(`/print/project/${project.split('/').pop()}`);await expect(page.locator('.print-root')).toContainText('opening narrative 1');await expect(page.locator('.print-root')).toContainText('Changed second narrative');
  });
 }
+
+test("Admin deletes a division template while Manager and project snapshots keep their expected access", async ({ browser, page }) => {
+  test.setTimeout(90000);
+  await login(page, "manager@ops.test");
+  const name = `Hapus checklist ${Date.now()}`;
+  const point = "Periksa area khusus template";
+  await page.goto("/master/templates/new");
+  await waitForHydration(page, 'input[type="file"]');
+  const headers = ["Fase", "Kategori", "Item", "Petunjuk", "Wajib", "Foto wajib", "Urutan", "Jenis baris"];
+  await page.getByLabel("File Excel", { exact: true }).setInputFiles(await xlsx(
+    headers, [["Opening", "Area", point, "", "Ya", "Tidak", 1, "DATA"]], `${name}.xlsx`,
+  ));
+  await page.getByRole("button", { name: "Pratinjau Excel", exact: true }).click();
+  await page.getByRole("button", { name: "Buat template", exact: true }).click();
+  await expect(page.getByText("Template dibuat.", { exact: true })).toBeVisible();
+  const templatePath = new URL(page.url()).pathname;
+  const templateId = templatePath.split("/").at(-1)!;
+  await expect(page.getByRole("button", { name: "Hapus template", exact: true })).toHaveCount(0);
+
+  await page.goto("/projects/new");
+  await waitForHydration(page, 'ol[aria-label="Langkah wizard"]');
+  await page.getByLabel("Kode project", { exact: true }).fill(`KEEP-${Date.now()}`);
+  await page.getByLabel("Nama project", { exact: true }).fill("Project simpan snapshot");
+  await page.getByLabel("Venue", { exact: true }).fill("Lokasi uji");
+  const next = page.getByRole("button", { name: "Lanjut →", exact: true });
+  await next.click();
+  await next.click();
+  await page.getByLabel("Template untuk divisi owner").selectOption(templateId);
+  await expect(page.getByRole("checkbox", { name: `Sertakan ${point}` })).toBeChecked();
+  await next.click();
+  await next.click();
+  await page.getByRole("button", { name: "Simpan project", exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
+  const projectPath = new URL(page.url()).pathname;
+
+  const adminContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const admin = await adminContext.newPage();
+    await login(admin);
+    await admin.goto(templatePath);
+    await waitForHydration(admin, 'button');
+    await admin.getByRole("button", { name: "Hapus template", exact: true }).click();
+    const modal = admin.getByRole("dialog");
+    await expect(modal.getByRole("heading", { name: "Hapus permanen?", exact: true })).toBeVisible();
+    await modal.getByRole("button", { name: "Batal", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await expect(admin.getByRole("heading", { name, exact: true })).toBeVisible();
+    await admin.getByRole("button", { name: "Hapus template", exact: true }).click();
+    await modal.getByLabel("Alasan", { exact: true }).fill("Template uji selesai");
+    await modal.getByLabel(/^Ketik/).fill(name);
+    await modal.getByRole("button", { name: "Ya, hapus permanen", exact: true }).click();
+    await expect(admin).toHaveURL(/\/master\/templates\?deleted=1$/);
+    await expect(admin.getByText("Template berhasil dihapus permanen.", { exact: true })).toBeVisible();
+    await expect(admin.getByRole("link", { name: new RegExp(name) })).toHaveCount(0);
+    expect((await admin.request.get(`/api/division-templates/workbook?id=${templateId}`)).status()).toBe(404);
+  } finally {
+    await adminContext.close();
+  }
+  await page.goto(`${projectPath}?tab=checklist`);
+  await expect(page.getByText(point, { exact: true })).toBeVisible();
+});

@@ -4,8 +4,8 @@ import { useActionState, useCallback, useEffect, useId, useRef, useState } from 
 import { previewRemovalAction, reactivateDataAction, removeDataAction } from "@/app/data-removal-actions";
 import type { RemovalEntity, RemovalPreview, RemovalState } from "@/lib/data-removal";
 
-export function RemoveDataButton({ onClick }: { onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="min-h-tap rounded-lg border border-red-600/30 px-3 text-xs font-medium text-red-700 dark:text-red-300">Hapus</button>;
+export function RemoveDataButton({ onClick, label = "Hapus" }: { onClick: () => void; label?: string }) {
+  return <button type="button" onClick={onClick} className="min-h-tap rounded-lg border border-red-600/30 px-3 text-xs font-medium text-red-700 dark:text-red-300">{label}</button>;
 }
 
 
@@ -63,7 +63,9 @@ function DataRemovalDialog({ entity, id, onClose, onSuccess }: {
     <p className="mt-2 break-words text-sm font-medium">{preview?.name}</p>
     <p id={description} className="mt-2 text-sm text-[var(--muted)]">{preview ? archive
       ? "Data perlu dipertahankan untuk menjaga riwayat. Data akan dinonaktifkan dan disembunyikan dari daftar aktif. Riwayat laporan dan data terkait tetap tersimpan; gunakan filter nonaktif untuk melihatnya."
-      : "Data belum digunakan. Data ini akan dihapus permanen dan tidak dapat dikembalikan. Tindakan tercatat di audit."
+      : entity === "division_template"
+        ? "Template dan poinnya akan dihapus permanen. Checklist project dan laporan yang sudah dibuat tetap tersimpan. Tindakan tercatat di audit."
+        : "Data belum digunakan. Data ini akan dihapus permanen dan tidak dapat dikembalikan. Tindakan tercatat di audit."
       : "Sedang memeriksa hubungan data sebelum menentukan tindakan yang aman."}</p>
     {error || state.error ? <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{error || state.error}</p> : null}
     <form action={action} className="mt-5 flex flex-col gap-4">
@@ -71,6 +73,7 @@ function DataRemovalDialog({ entity, id, onClose, onSuccess }: {
         <input type="hidden" name="entity" value={entity} />
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="expectedMode" value={preview.mode} />
+        {preview.version !== undefined ? <input type="hidden" name="expectedVersion" value={preview.version} /> : null}
         <label htmlFor={reason} className="flex flex-col gap-2 text-xs font-medium">Alasan
           <textarea id={reason} name="reason" required minLength={3} maxLength={1000} rows={3} disabled={pending} className="rounded-xl border bg-[var(--bg)] p-3 text-base" style={{ borderColor: "var(--border)" }} />
         </label>

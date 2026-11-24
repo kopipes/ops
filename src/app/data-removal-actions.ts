@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { previewDataRemoval, reactivateMasterData, removeData, removalSchema } from "@/server/services/data-removal";
@@ -14,7 +15,7 @@ function errorMessage(err: unknown): string {
 }
 
 function isCurrentEntity(entity: unknown): entity is RemovalEntity {
-  return entity === "user" || entity === "division" || entity === "issue_category";
+  return entity === "user" || entity === "division" || entity === "issue_category" || entity === "division_template";
 }
 
 export async function previewRemovalAction(entity: RemovalEntity, id: string): Promise<{ preview?: RemovalPreview; error?: string }> {
@@ -33,6 +34,7 @@ export async function removeDataAction(_prev: RemovalState, formData: FormData):
   try { result = removeData(getDb(), user, parsed.data); }
   catch (err) { return { error: errorMessage(err) }; }
   revalidatePath("/", "layout");
+  if (result.entity === "division_template" && result.mode === "delete") redirect("/master/templates?deleted=1");
   return { ok: true, message: result.mode === "delete" ? `“${result.name}” berhasil dihapus permanen.` : `“${result.name}” diarsipkan. Riwayat tetap tersimpan.` };
 }
 

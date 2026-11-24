@@ -282,6 +282,10 @@ export function listUnassignedLegacyTemplates(db: DB, actor: ActingUser) {
     where t.division_id is null and not exists (
       select 1 from division_checklist_templates d
       where d.id=('legacy:' || t.id || ':' || d.division_id)
+    ) and not exists (
+      select 1 from audit_logs a
+      where a.entity_type='division_template' and a.action='division_template.deleted'
+      and a.entity_id=('legacy:' || t.id || ':' || case when json_valid(a.meta_json) then json_extract(a.meta_json, '$.divisionId') end)
     )
     group by t.id, t.name
     order by t.is_active desc, t.name asc
@@ -300,6 +304,11 @@ export function assignLegacyTemplate(db: DB, actor: ActingUser, id: string, divi
     if (tx.select({ id: templates.id }).from(templates).where(eq(templates.id, templateId)).get()) {
       throw new ValidationError("Template lama ini sudah disalin ke divisi tersebut.");
     }
+    const removed = tx.select({ id: auditLogs.id }).from(auditLogs).where(and(
+      eq(auditLogs.entityType, "division_template"), eq(auditLogs.entityId, templateId),
+      eq(auditLogs.action, "division_template.deleted"),
+    )).get();
+    if (removed) throw new ValidationError("Salinan template ini sudah dihapus permanen.");
     const title = validName(tx, divisionId, name || original.name);
     const rows = tx.all<DivisionTemplateRow>(sql`
       select i.phase, c.name as categoryName, i.label, i.description,

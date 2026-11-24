@@ -9,9 +9,12 @@ import { canCreateProject, isAdmin } from "@/server/permissions";
 
 export const metadata = { title: "Template Divisi — Pulse" };
 
-export default async function TemplatesPage() {
+export default async function TemplatesPage({ searchParams }: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
   const { user } = await requireUserWithoutPasswordChange();
   if (!canCreateProject(user)) redirect("/");
+  const { deleted } = await searchParams;
   const db = getDb();
   const templates = listDivisionTemplates(db, user);
   const legacyCount = isAdmin(user) ? listUnassignedLegacyTemplates(db, user).length : 0;
@@ -39,6 +42,7 @@ export default async function TemplatesPage() {
         </div>
         <Link className="btn-primary" href="/master/templates/new">Upload Excel</Link>
       </header>
+      {isAdmin(user) && deleted === "1" ? <p role="status" className="status-badge tone-ok mb-4">Template berhasil dihapus permanen.</p> : null}
       {!grouped.size ? <EmptyState>Belum ada template. Upload Excel untuk membuat template pertama.</EmptyState> : null}
       <div className="grid gap-4">
         {[...grouped].map(([division, list]) => {
