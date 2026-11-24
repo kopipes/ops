@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // Do not let a parent workspace's lockfile widen the deployment file trace.
   outputFileTracingRoot: process.cwd(),
   // better-sqlite3 is a native module: keep it external so Next does not try to bundle it.
-  serverExternalPackages: ["better-sqlite3", "read-excel-file", "yauzl"],
+  serverExternalPackages: ["better-sqlite3", "exceljs", "read-excel-file", "yauzl"],
   poweredByHeader: false,
 };
 

@@ -2,8 +2,8 @@
 
 import { PROJECT_ROLES, projectRoleOptionLabel, type ProjectRole } from "@/lib/project-roles";
 
-import { useActionState, useMemo, useState } from "react";
-import type { ProjectActionState } from "@/app/project-actions";
+import { useActionState, useRef, useState } from "react";
+import { previewProjectChecklistAction, type ProjectActionState } from "@/app/project-actions";
 import { PHASES, phaseLabel } from "@/lib/schemas";
 
 export interface WizardOption {
@@ -15,7 +15,7 @@ export interface WizardTemplate {
   id: string;
   name: string;
   itemCount: number;
-  divisionName: string | null;
+  divisionId: string;
 }
 
 export interface WizardProjectOption {
@@ -46,12 +46,10 @@ export interface ChecklistRow {
 interface Props {
   action: (prev: ProjectActionState, formData: FormData) => Promise<ProjectActionState>;
   divisions: WizardOption[];
+  ownerDivisions: WizardOption[];
   templates: WizardTemplate[];
   projects: WizardProjectOption[];
   members: WizardMember[];
-  /** Pre-rendered checklist rows per template, so the client can build the preview. */
-  templateRows: Record<string, ChecklistRow[]>;
-  projectRows: Record<string, ChecklistRow[]>;
   currentUserId: string;
   defaultDivisionId: string;
   defaultCode: string;
@@ -90,11 +88,10 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 export function ProjectWizard({
   action,
   divisions,
+  ownerDivisions,
   templates,
   projects,
   members,
-  templateRows,
-  projectRows,
   currentUserId,
   defaultDivisionId,
   defaultCode,
@@ -108,7 +105,12 @@ export function ProjectWizard({
   const [ownerDivisionId, setOwnerDivisionId] = useState(defaultDivisionId);
   const [additional, setAdditional] = useState<string[]>([]);
   const [source, setSource] = useState<"template" | "project" | "empty">("template");
-  const [templateIds, setTemplateIds] = useState<string[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [templateVersion, setTemplateVersion] = useState(0);
+  const [selectedRows, setSelectedRows] = useState<ChecklistRow[]>([]);
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [checklistError, setChecklistError] = useState("");
+  const checklistRequest = useRef(0);
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [removed, setRemoved] = useState<string[]>([]);
   const [customRows, setCustomRows] = useState<ChecklistRow[]>([]);
@@ -119,24 +121,34 @@ export function ProjectWizard({
   const [startDate, setStartDate] = useState(todayIso);
   const [endDate, setEndDate] = useState(todayIso);
 
-  // Preview rows for the chosen source, minus anything unchecked.
-  const previewRows: ChecklistRow[] = useMemo(() => {
-    let base: ChecklistRow[] = [];
-    if (source === "template") {
-      const seen = new Set<string>();
-      for (const tid of templateIds) {
-        for (const row of templateRows[tid] ?? []) {
-          const key = row.sourceItemId ?? `${row.phase}::${row.label}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          base.push({ ...row, key });
-        }
+  const previewRows = [...selectedRows, ...customRows];
+  const divisionTemplates = templates.filter((template) => template.divisionId === ownerDivisionId);
+
+  async function selectChecklist(kind: "template" | "project", id: string, divisionId = ownerDivisionId) {
+    const request = ++checklistRequest.current;
+    setTemplateId(kind === "template" ? id : "");
+    setSourceProjectId(kind === "project" ? id : "");
+    setTemplateVersion(0);
+    setSelectedRows([]);
+    setRemoved([]);
+    setChecklistError("");
+    setLoadingChecklist(Boolean(id));
+    if (!id) return;
+    try {
+      const result = await previewProjectChecklistAction(kind, id, divisionId);
+      if (request !== checklistRequest.current) return;
+      if ("rows" in result && result.rows) {
+        setSelectedRows(result.rows);
+        setTemplateVersion(result.version);
+      } else {
+        setChecklistError(("error" in result ? result.error : undefined) ?? "Checklist tidak dapat dimuat.");
       }
-    } else if (source === "project" && sourceProjectId) {
-      base = (projectRows[sourceProjectId] ?? []).slice();
+    } catch {
+      if (request === checklistRequest.current) setChecklistError("Checklist tidak dapat dimuat.");
+    } finally {
+      if (request === checklistRequest.current) setLoadingChecklist(false);
     }
-    return [...base.filter((r) => !removed.includes(r.key)), ...customRows];
-  }, [source, templateIds, templateRows, sourceProjectId, projectRows, removed, customRows]);
+  }
 
   const filteredMembers = members.filter((m) => {
     if (!memberSearch.trim()) return true;
@@ -147,12 +159,12 @@ export function ProjectWizard({
   const canNext = (() => {
     if (step === 0) return true; // validated on submit
     if (step === 1) return Boolean(ownerDivisionId);
-    return true;
+    return !loadingChecklist && !checklistError;
   })();
 
   const addCustom = () => {
     const label = customLabel.trim();
-    if (!label) return;
+    if (label.length < 2) return;
     setCustomRows((prev) => [
       ...prev,
       {
@@ -176,22 +188,19 @@ export function ProjectWizard({
         <input key={d} type="hidden" name="additionalDivisionIds" value={d} />
       ))}
       <input type="hidden" name="checklistSource" value={source} />
-      {templateIds.map((t) => (
-        <input key={t} type="hidden" name="templateIds" value={t} />
-      ))}
+      <input type="hidden" name="templateIds" value={source === "template" ? templateId : ""} />
+      <input type="hidden" name="templateVersion" value={templateVersion} />
       <input type="hidden" name="sourceProjectId" value={source === "project" ? sourceProjectId : ""} />
       {removed.map((k) => (
         <input key={k} type="hidden" name="cl_removed" value={k} />
       ))}
-      {previewRows.map((r) => (
+      {customRows.filter((row) => !removed.includes(row.key)).map((r) => (
         <div key={r.key}>
           <input type="hidden" name="cl_label" value={r.label} />
           <input type="hidden" name="cl_phase" value={r.phase} />
           <input type="hidden" name="cl_category" value={r.categoryName} />
-          <input type="hidden" name="cl_source" value={r.sourceItemId ?? ""} />
           <input type="hidden" name="cl_required" value={r.isRequired ? "1" : "0"} />
           <input type="hidden" name="cl_photo" value={r.requiresPhoto ? "1" : "0"} />
-          <input type="hidden" name="cl_savemaster" value={r.sourceItemId ? "0" : "1"} />
         </div>
       ))}
       {Object.entries(selectedMembers).map(([userId, role]) => (
@@ -317,11 +326,15 @@ export function ProjectWizard({
           <select
             aria-label="Divisi owner"
             value={ownerDivisionId}
-            onChange={(e) => setOwnerDivisionId(e.target.value)}
+            onChange={(e) => {
+              setOwnerDivisionId(e.target.value);
+              setAdditional((current) => current.filter((id) => id !== e.target.value));
+              if (source === "template") void selectChecklist("template", "");
+            }}
             className={inputCls}
             style={inputStyle}
           >
-            {divisions.map((d) => (
+            {ownerDivisions.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
               </option>
@@ -364,9 +377,9 @@ export function ProjectWizard({
           </legend>
           {(
             [
-              ["template", "Template (bisa pilih lebih dari satu)"],
-              ["project", "Copy dari project sebelumnya"],
-              ["empty", "Kosong"],
+              ["template", "Template divisi"],
+              ["project", "Salin dari project sebelumnya"],
+              ["empty", "Tanpa template"],
             ] as const
           ).map(([value, label]) => (
             <label key={value} className="flex min-h-tap items-center gap-2 text-sm">
@@ -377,7 +390,7 @@ export function ProjectWizard({
                 checked={source === value}
                 onChange={() => {
                   setSource(value);
-                  setRemoved([]);
+                  void selectChecklist("template", "");
                 }}
                 className="h-5 w-5"
               />
@@ -387,53 +400,24 @@ export function ProjectWizard({
         </fieldset>
 
         {source === "template" ? (
-          <fieldset className="flex flex-col gap-2 rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
-            <legend className="px-1 text-xs" style={{ color: "var(--muted)" }}>
-              Pilih template
-            </legend>
-            {templates.length === 0 ? (
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
-                Belum ada template.
-              </p>
-            ) : (
-              templates.map((t) => (
-                <label key={t.id} className="flex min-h-[40px] items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-5 w-5"
-                    checked={templateIds.includes(t.id)}
-                    onChange={(e) => {
-                      setRemoved([]);
-                      setTemplateIds((prev) =>
-                        e.target.checked ? [...prev, t.id] : prev.filter((x) => x !== t.id),
-                      );
-                    }}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate">{t.name}</span>
-                    <span className="block text-xs" style={{ color: "var(--muted)" }}>
-                      {t.itemCount} item · {t.divisionName ?? "Global"}
-                    </span>
-                  </span>
-                </label>
-              ))
-            )}
-            {templateIds.length > 1 ? (
-              <p className="text-xs" style={{ color: "var(--muted)" }}>
-                Template digabung dan duplikat dihilangkan otomatis.
-              </p>
-            ) : null}
-          </fieldset>
+          <div className="grid gap-1">
+            <Label htmlFor="wizard-template">Template untuk divisi owner</Label>
+            <select id="wizard-template" value={templateId}
+              onChange={(event) => void selectChecklist("template", event.target.value)}
+              className={inputCls} style={inputStyle}>
+              <option value="">{divisionTemplates.length ? "Pilih template…" : "Belum ada template di divisi ini"}</option>
+              {divisionTemplates.map((template) => (
+                <option key={template.id} value={template.id}>{template.name} · {template.itemCount} poin</option>
+              ))}
+            </select>
+          </div>
         ) : null}
 
         {source === "project" ? (
           <select
             aria-label="Project sumber"
             value={sourceProjectId}
-            onChange={(e) => {
-              setSourceProjectId(e.target.value);
-              setRemoved([]);
-            }}
+            onChange={(event) => void selectChecklist("project", event.target.value)}
             className={inputCls}
             style={inputStyle}
           >
@@ -446,9 +430,12 @@ export function ProjectWizard({
           </select>
         ) : null}
 
+        {loadingChecklist ? <p role="status" className="text-sm">Memuat checklist…</p> : null}
+        {checklistError ? <p role="alert" className="text-sm text-red-700">{checklistError}</p> : null}
+
         <div>
           <p className="mb-2 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Item checklist ({previewRows.length})
+            Item checklist ({previewRows.filter((row) => !removed.includes(row.key)).length})
           </p>
           {previewRows.length === 0 ? (
             <p
@@ -477,7 +464,7 @@ export function ProjectWizard({
                           <input
                             type="checkbox"
                             className="h-5 w-5"
-                            defaultChecked
+                            checked={!removed.includes(r.key)}
                             aria-label={`Sertakan ${r.label}`}
                             onChange={(e) => {
                               if (e.target.checked) setRemoved((p) => p.filter((k) => k !== r.key));
@@ -488,7 +475,6 @@ export function ProjectWizard({
                             <span className="block truncate">{r.label}</span>
                             <span className="block text-xs" style={{ color: "var(--muted)" }}>
                               {r.categoryName}
-                              {r.sourceItemId ? "" : " · custom"}
                             </span>
                           </span>
                         </li>
@@ -523,6 +509,7 @@ export function ProjectWizard({
               aria-label="Label item custom"
               value={customLabel}
               onChange={(e) => setCustomLabel(e.target.value)}
+              maxLength={200}
               placeholder="Label item…"
               className={inputCls}
               style={inputStyle}
@@ -536,10 +523,6 @@ export function ProjectWizard({
               +
             </button>
           </div>
-          <label className="mt-2 flex items-center gap-2 text-sm">
-            <input type="checkbox" name="saveCustomToMaster" className="h-4 w-4" />
-            Simpan juga ke master
-          </label>
         </div>
       </section>
 

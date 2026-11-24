@@ -1,17 +1,13 @@
 import { redirect } from "next/navigation";
 import { and, asc, eq, ne, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
-import { ProjectWizard, type ChecklistRow } from "@/components/project/ProjectWizard";
+import { ProjectWizard } from "@/components/project/ProjectWizard";
 import { requireUser } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { divisions, users } from "@/server/db/schema";
-import { listTemplates } from "@/server/services/templates";
+import { listDivisionTemplates } from "@/server/services/division-templates";
 import { generateProjectCode } from "@/server/services/projects";
 import { getGlobalSettings } from "@/server/services/app-settings";
-import {
-  buildChecklistFromProject,
-  buildChecklistFromTemplates,
-} from "@/server/services/project-checklist";
 import { visibleProjectIds } from "@/server/visibility";
 import { isAdmin, isManager } from "@/server/permissions";
 import { projects } from "@/server/db/schema";
@@ -39,30 +35,16 @@ export default async function NewProjectPage({
       .from(divisions)
       .where(eq(divisions.isActive, true))
       .orderBy(asc(divisions.name)),
-    listTemplates(db, session.user),
+    listDivisionTemplates(db, session.user, true),
   ]);
 
   const settings = await getGlobalSettings(db);
-  const defaultDivisionId = session.user.divisionIds[0] ?? divisionRows[0]?.id ?? "";
+  const ownerDivisions = divisionRows.filter((division) => isAdmin(session.user) || session.user.divisionIds.includes(division.id));
+  const defaultDivisionId = ownerDivisions.find((division) => session.user.divisionIds.includes(division.id))?.id ?? ownerDivisions[0]?.id ?? "";
   const defaultCode = await generateProjectCode(db, {
     divisionCode: divisionRows.find((d) => d.id === defaultDivisionId)?.code ?? "PRJ",
     year: new Date().getFullYear(),
   });
-
-  // Pre-render template rows server-side so the client can preview merges.
-  const templateRows: Record<string, ChecklistRow[]> = {};
-  for (const t of templates) {
-    const rows = await buildChecklistFromTemplates(db, [t.id]);
-    templateRows[t.id] = rows.map((r) => ({
-      key: r.sourceItemId ?? `${r.phase}::${r.label}`,
-      sourceItemId: r.sourceItemId,
-      phase: r.phase,
-      categoryName: r.categoryName,
-      label: r.label,
-      isRequired: r.isRequired,
-      requiresPhoto: r.requiresPhoto,
-    }));
-  }
 
   // Candidate projects for "copy from previous project".
   const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true, workspaceOnly: true });
@@ -74,21 +56,6 @@ export default async function NewProjectPage({
           .from(projects)
           .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)))
           .orderBy(asc(projects.name));
-
-  const projectRows: Record<string, ChecklistRow[]> = {};
-  for (const p of projectOptions) {
-    const rows = await buildChecklistFromProject(db, p.id);
-    if (rows.length === 0) continue;
-    projectRows[p.id] = rows.map((r) => ({
-      key: r.sourceItemId ?? `${r.phase}::${r.label}`,
-      sourceItemId: r.sourceItemId,
-      phase: r.phase,
-      categoryName: r.categoryName,
-      label: r.label,
-      isRequired: r.isRequired,
-      requiresPhoto: r.requiresPhoto,
-    }));
-  }
 
   // Member candidates: default filter is the project's divisions (§6.1 no.4).
   const memberRows = await db
@@ -134,16 +101,10 @@ export default async function NewProjectPage({
       <ProjectWizard
         action={saveProjectAction}
         divisions={divisionRows.map((d) => ({ id: d.id, name: d.name }))}
-        templates={templates.map((t) => ({
-          id: t.id,
-          name: t.name,
-          itemCount: t.itemCount,
-          divisionName: t.divisionName,
-        }))}
+        ownerDivisions={ownerDivisions}
+        templates={templates}
         projects={projectOptions}
         members={memberOptions}
-        templateRows={templateRows}
-        projectRows={projectRows}
         currentUserId={session.user.id}
         defaultDivisionId={defaultDivisionId}
         defaultCode={defaultCode}

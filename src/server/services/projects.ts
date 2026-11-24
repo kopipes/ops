@@ -15,12 +15,15 @@ import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { recordTemplateUsage } from "./templates";
+import { readProjectTemplate } from "./division-templates";
+import type { SnapshotRow } from "./project-checklist";
 import {
   auditLogs,
   dayComments,
   issues,
   photos,
   projectDays,
+  projectChecklistItems,
   projectDivisions,
   projectMembers,
   projects,
@@ -32,6 +35,7 @@ import { deleteProjectSchema, PROJECT_STATUS_FLOW, type ProjectDetailsInput, typ
 import type { ProjectStatus } from "@/server/db/schema";
 import {
   canManageProject,
+  canViewProjectWorkspace,
   canDeleteProject,
   isAdmin,
   isManager,
@@ -205,10 +209,17 @@ export interface CreateProjectResult {
   days: DaySyncResult;
 }
 
+interface InitialProjectChecklist {
+  templateVersion: number;
+  removedTemplateRows: string[];
+  copiedRows: Omit<SnapshotRow, "id" | "projectId">[];
+}
+
 export async function createProject(
   db: DB,
   actor: ActingUser,
   input: ProjectInput,
+  initialChecklist?: InitialProjectChecklist,
 ): Promise<CreateProjectResult> {
   return db.transaction((tx) => {
     const user = currentProjectActor(tx, actor);
@@ -217,6 +228,26 @@ export async function createProject(
       throw new ForbiddenError("Kamu hanya bisa membuat project untuk divisimu");
     }
     assertProjectCodeAvailable(tx, input.code);
+
+    const templateIds = input.checklistSource === "template" ? input.templateIds : [];
+    if (templateIds.length > 1) throw new ValidationError("Pilih satu template divisi.");
+    const template = templateIds[0]
+      ? readProjectTemplate(tx, user, templateIds[0], input.ownerDivisionId)
+      : null;
+    if (template && template.version !== initialChecklist?.templateVersion) {
+      throw new ValidationError("Template berubah. Pilih kembali template untuk melihat isi terbaru.");
+    }
+    if (initialChecklist && input.checklistSource === "project" && input.sourceProjectId) {
+      const source = currentProjectAccess(tx, user, input.sourceProjectId);
+      if (!canViewProjectWorkspace(source.user, source.facts)) throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
+    }
+    const removed = new Set(initialChecklist?.removedTemplateRows);
+    const rows = [
+      ...(template?.rows.filter((row) => !removed.has(row.id)).map((row) => ({ ...row, sourceItemId: null })) ?? []),
+      ...(initialChecklist?.copiedRows ?? []),
+      ...input.checklistItems.map((row) => ({ ...row, sourceItemId: null })),
+    ];
+    if (rows.length > 1000) throw new ValidationError("Maksimal 1.000 poin checklist per project.");
 
     const id = randomUUID();
     const now = Date.now();
@@ -242,6 +273,15 @@ export async function createProject(
       createdAt: now,
       updatedAt: now,
     }).run();
+
+    for (const [sortOrder, row] of rows.entries()) {
+      tx.insert(projectChecklistItems).values({
+        id: randomUUID(), projectId: id, sourceItemId: row.sourceItemId,
+        phase: row.phase, categoryName: row.categoryName, label: row.label, description: row.description,
+        isRequired: row.isRequired, requiresPhoto: row.requiresPhoto, sortOrder, isActive: true,
+        createdAt: now, updatedAt: now,
+      }).run();
+    }
 
     for (const divisionId of new Set(input.additionalDivisionIds)) {
       tx.insert(projectDivisions).values({ projectId: id, divisionId }).onConflictDoNothing().run();

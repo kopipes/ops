@@ -94,7 +94,7 @@ export function SideNav({
             </ul>
           </div>
         ) : null}
-        {userRole === "admin" || userRole === "manager" ? <div className="mb-2 mt-6 border-t border-white/10 pt-4"><p className="rail-label mb-2">Kelola workspace</p><Link href="/admin/users" className="rail-link" aria-current={isActive("/admin") ? "page" : undefined}><Icon name="shield" size={18} />User & aktivasi</Link><Link href="/master/checklist-items" className="rail-link" aria-current={isActive("/master") ? "page" : undefined}><Icon name="layers" size={18} />Master data</Link></div> : null}
+        {userRole === "admin" || userRole === "manager" ? <div className="mb-2 mt-6 border-t border-white/10 pt-4"><p className="rail-label mb-2">Kelola workspace</p><Link href="/admin/users" className="rail-link" aria-current={isActive("/admin") ? "page" : undefined}><Icon name="shield" size={18} />User & aktivasi</Link><Link href="/master/templates" className="rail-link" aria-current={isActive("/master/templates") ? "page" : undefined}><Icon name="layers" size={18} />Template Divisi</Link></div> : null}
       </nav>
 
       <Link

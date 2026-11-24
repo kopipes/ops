@@ -5,13 +5,11 @@ export function MasterNav({
   active,
   isAdmin = false,
 }: {
-  active: "items" | "templates" | "issue-categories" | "checklist-categories";
+  active: "templates" | "issue-categories";
   isAdmin?: boolean;
 }) {
   const links = [
-    { key: "items", href: "/master/checklist-items", label: "Checklist" },
-    { key: "checklist-categories", href: "/master/checklist-categories", label: "Kategori", adminOnly: true },
-    { key: "templates", href: "/master/templates", label: "Template" },
+    { key: "templates", href: "/master/templates", label: "Template Divisi" },
     { key: "issue-categories", href: "/master/issue-categories", label: "Kategori Issue", adminOnly: true },
   ] as const;
 
@@ -19,7 +17,7 @@ export function MasterNav({
 
   return (
     <nav
-      aria-label="Master data"
+      aria-label="Kelola workspace"
       className="mb-4 grid grid-cols-2 gap-1 rounded-lg p-1 sm:grid-cols-4 lg:inline-grid lg:w-auto lg:grid-flow-col lg:auto-cols-max lg:grid-cols-none"
       style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
     >

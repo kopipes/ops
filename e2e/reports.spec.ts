@@ -48,8 +48,8 @@ async function createTodayProject(page: Page, name: string, date?: string) {
   }
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await page.getByRole("button", { name: "Lanjut →" }).click();
-  await visible.locator('fieldset input[type="checkbox"]').first().check();
-  await expect(page.locator('input[name="cl_label"]').first()).toBeAttached();
+  await page.getByLabel("Template untuk divisi owner").selectOption("demo-division-tpl-standard");
+  await expect(page.getByRole("checkbox", { name: "Sertakan Area venue bersih dan siap dipakai", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lanjut →" }).click();
   const crewRow = page.locator("section:not([hidden]) li", { hasText: "crew@ops.test" }).first();
   await crewRow.locator('input[type="checkbox"]').check();

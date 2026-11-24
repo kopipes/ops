@@ -15,6 +15,8 @@ import {
   issueCategories,
   checklistTemplateItems,
   checklistTemplates,
+  divisionChecklistTemplates,
+  divisionChecklistTemplateItems,
   divisions,
   userDivisions,
   users,
@@ -289,6 +291,23 @@ export async function seed() {
         .values({ templateId: t.id, checklistItemId: itemId, sortOrder: i })
         .onConflictDoNothing();
     }
+    // Demo data only; live templates are migrated from existing records.
+    db.transaction((tx) => {
+      const templateId = `demo-division-${t.id}`;
+      const inserted = tx.insert(divisionChecklistTemplates).values({
+        id: templateId, name: t.name, description: t.description, divisionId: "div-evt",
+        createdBy: "usr-admin", createdAt: now, updatedAt: now,
+      }).onConflictDoNothing().run();
+      if (!inserted.changes) return;
+      wanted.forEach((item, sortOrder) => {
+        tx.insert(divisionChecklistTemplateItems).values({
+          id: `${templateId}-${sortOrder}`, templateId, phase: item.phase, label: item.label,
+          description: item.description, categoryName: CATEGORIES.find((category) => category.id === item.categoryId)?.name ?? "Umum",
+          isRequired: item.isRequired ?? true, requiresPhoto: item.requiresPhoto ?? false, sortOrder,
+        }).run();
+      });
+    });
+
   }
 
   // Issue categories

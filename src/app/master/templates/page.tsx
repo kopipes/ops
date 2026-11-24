@@ -1,59 +1,64 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, asc, desc, isNull } from "drizzle-orm";
 import { AppShell } from "@/components/AppShell";
-import { MasterNav } from "@/components/master/MasterNav";
-import { TemplateList } from "@/components/master/TemplateList";
-import { requireUser } from "@/server/auth/current-user";
+import { MasterNav, EmptyState } from "@/components/master/MasterNav";
+import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
-import { projects } from "@/server/db/schema";
-import { listTemplates } from "@/server/services/templates";
-import { visibleProjectIds } from "@/server/visibility";
-import { isAdmin, isManager } from "@/server/permissions";
-import { inArray } from "drizzle-orm";
-import {
-  deactivateTemplateAction,
-  duplicateTemplateAction,
-  templateFromProjectAction,
-} from "@/app/master-actions";
+import { listDivisionTemplates, listUnassignedLegacyTemplates } from "@/server/services/division-templates";
+import { canCreateProject, isAdmin } from "@/server/permissions";
 
-export const metadata = { title: "Template Checklist — Pulse" };
+export const metadata = { title: "Template Divisi — Pulse" };
 
 export default async function TemplatesPage() {
-  const session = await requireUser();
-  if (!isAdmin(session.user) && !isManager(session.user)) redirect("/");
-
+  const { user } = await requireUserWithoutPasswordChange();
+  if (!canCreateProject(user)) redirect("/");
   const db = getDb();
-  const templates = await listTemplates(db, session.user, { includeInactive: true });
-
-  const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true, workspaceOnly: true });
-  const projectRows =
-    projectIds.length === 0
-      ? []
-      : await db
-          .select({ id: projects.id, name: projects.name, code: projects.code })
-          .from(projects)
-          .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)))
-          .orderBy(desc(projects.startDate), asc(projects.name));
+  const templates = listDivisionTemplates(db, user);
+  const legacyCount = isAdmin(user) ? listUnassignedLegacyTemplates(db, user).length : 0;
+  const grouped = new Map<string, typeof templates>();
+  for (const template of templates) {
+    const division = grouped.get(template.divisionName) ?? [];
+    division.push(template);
+    grouped.set(template.divisionName, division);
+  }
+  const rows = (list: typeof templates) => list.map((template) => (
+    <Link href={`/master/templates/${encodeURIComponent(template.id)}`} key={template.id}
+      className="flex min-h-14 items-center justify-between gap-3 border-t border-[var(--border)] px-4 py-3 transition-colors hover:bg-[var(--bg)] sm:px-5">
+      <span className="min-w-0 break-words font-medium">{template.name}</span>
+      <span className="shrink-0 text-sm text-[var(--muted)]">{template.itemCount} poin <span aria-hidden="true" className="ml-2">›</span></span>
+    </Link>
+  ));
 
   return (
     <AppShell>
-      <MasterNav active="templates" isAdmin={isAdmin(session.user)} />
-      <TemplateList
-        isAdmin={isAdmin(session.user)}
-        templates={templates.map((t) => ({
-          id: t.id,
-          name: t.name,
-          description: t.description,
-          divisionName: t.divisionName,
-          isActive: t.isActive,
-          itemCount: t.itemCount,
-          phases: t.phases,
-        }))}
-        projects={projectRows}
-        duplicateAction={duplicateTemplateAction}
-        fromProjectAction={templateFromProjectAction}
-        deactivateAction={deactivateTemplateAction}
-      />
+      {isAdmin(user) ? <MasterNav active="templates" isAdmin /> : null}
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="page-title">Template Divisi</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">Simpan checklist yang bisa dipakai ulang untuk project di divisi yang sama.</p>
+        </div>
+        <Link className="btn-primary" href="/master/templates/new">Upload Excel</Link>
+      </header>
+      {!grouped.size ? <EmptyState>Belum ada template. Upload Excel untuk membuat template pertama.</EmptyState> : null}
+      <div className="grid gap-4">
+        {[...grouped].map(([division, list]) => {
+          const active = list.filter((template) => template.isActive);
+          const archived = list.filter((template) => !template.isActive);
+          return (
+            <section key={division} className="surface-card overflow-hidden">
+              <h2 className="section-title px-4 py-3.5 sm:px-5">{division}</h2>
+              {active.length ? rows(active) : <p className="border-t border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">Belum ada template aktif.</p>}
+              {archived.length ? (
+                <details className="border-t border-[var(--border)]">
+                  <summary className="cursor-pointer px-4 py-3 text-sm text-[var(--muted)] sm:px-5">Arsip ({archived.length})</summary>
+                  {rows(archived)}
+                </details>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+      {legacyCount ? <Link href="/master/templates/legacy" className="btn-secondary mt-4">Template lama tanpa divisi ({legacyCount})</Link> : null}
     </AppShell>
   );
 }

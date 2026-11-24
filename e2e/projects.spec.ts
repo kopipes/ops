@@ -50,9 +50,9 @@ async function createProjectViaWizard(
   // Scope to the visible section: hidden steps still contain checkboxes.
   const visible = page.locator("section:not([hidden])");
   if (opts.template !== false) {
-    await visible.locator('fieldset input[type="checkbox"]').first().check();
+    await page.getByLabel("Template untuk divisi owner").selectOption("demo-division-tpl-standard");
     // Wait for the preview to render so hidden cl_* fields exist.
-    await expect(page.locator('input[name="cl_label"]').first()).toBeAttached();
+    await expect(page.getByRole("checkbox", { name: "Sertakan Area venue bersih dan siap dipakai", exact: true })).toBeVisible();
   }
   await page.getByRole("button", { name: "Lanjut →" }).click();
 

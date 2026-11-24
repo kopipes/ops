@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "@/server/db/schema";
 import { checklistItemInputSchema, type ChecklistItemInput } from "@/lib/schemas";
+import { DIVISION_TEMPLATE_HEADERS, EXCEL_ROW_MARKER } from "@/lib/division-templates";
 import type { ActingUser } from "@/server/permissions";
 import { canManageChecklistItem } from "@/server/permissions";
 import { ForbiddenError, ValidationError } from "./checklist-items";
@@ -57,13 +58,20 @@ export async function parseChecklistWorkbook(buffer: Buffer): Promise<ExcelCheck
   try { data=await readSheet(buffer,"Checklist"); }
   catch { throw new ValidationError("File Excel tidak bisa dibaca. Gunakan sheet Checklist pada template .xlsx dari Pulse."); }
   const text=(value:unknown)=>value==null?"":String(value).trim();
-  if(HEADERS.some((header,i)=>normalize(text(data[0]?.[i]))!==normalize(header)))throw new ValidationError("Judul kolom tidak sesuai. Gunakan kolom pada template Pulse.");
-  const hasMarker=normalize(text(data[0]?.[8]))==="jenis baris";
-  if(data.length>2002||data.some(row=>row.length>(hasMarker?9:8)))throw new ValidationError("Maksimal 1.000 item dan kolom sesuai template");
-  const rows:ExcelChecklistRow[]=[];
-  for(let i=1;i<data.length;i++) {
-    const values=HEADERS.map((_,col)=>text(data[i][col]));
-    const marker=hasMarker?normalize(text(data[i][8])):"";
+  const matches = (headers: readonly string[]) =>
+    headers.every((header, index) => normalize(text(data[0]?.[index])) === normalize(header));
+  const legacy = matches(HEADERS);
+  const headers = legacy ? HEADERS : DIVISION_TEMPLATE_HEADERS;
+  if (!legacy && !matches(headers)) throw new ValidationError("Judul kolom tidak sesuai. Gunakan kolom pada template Pulse.");
+  const hasMarker = normalize(text(data[0]?.[headers.length])) === normalize(EXCEL_ROW_MARKER);
+  if (data.length > 2002 || data.some(row => row.length > headers.length + Number(hasMarker))) {
+    throw new ValidationError("Maksimal 1.000 item dan kolom sesuai template");
+  }
+  const rows: ExcelChecklistRow[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const values = headers.map((_, col) => text(data[i][col]));
+    const marker = hasMarker ? normalize(text(data[i][headers.length])) : "";
+    if (!legacy) values.splice(4, 0, "");
     if(marker && !["contoh","data"].includes(marker))throw new ValidationError(`Baris ${i+1}: Jenis baris harus CONTOH, DATA, atau kosong`);
     if(values.some(Boolean))rows.push({row:i+1,values,...(marker==="contoh"?{sample:true}:{})});
   }

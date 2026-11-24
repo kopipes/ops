@@ -61,11 +61,11 @@ export default async function AccountPage() {
 
       {session.user.role === "admin" || session.user.role === "manager" ? (
         <Link
-          href="/master/checklist-items"
+          href="/master/templates"
           className="mb-3 flex min-h-tap items-center justify-center rounded-lg border px-4 py-3 text-base"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--fg)" }}
         >
-          Master data & template
+          Template Divisi
         </Link>
       ) : null}
 

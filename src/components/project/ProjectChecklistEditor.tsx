@@ -19,8 +19,23 @@ export function ProjectChecklistEditor({
   version: string;
   initialRows: Array<Omit<Row, "id" | "key"> & { id: string }>;
 }) {
+  return <ChecklistEditor action={saveProjectChecklistAction} id={projectId} version={version}
+    initialRows={initialRows} cancelHref={`/projects/${projectId}?tab=checklist`} />;
+}
+
+export function ChecklistEditor({
+  action, id, version, initialRows, cancelHref, templateName,
+}: {
+  action: (state: ProjectActionState, data: FormData) => Promise<ProjectActionState>;
+  id: string;
+  version: string;
+  initialRows: Array<Omit<Row, "id" | "key"> & { id: string }>;
+  cancelHref: string;
+  templateName?: string;
+}) {
+  const [name, setName] = useState(templateName ?? "");
   const [rows, setRows] = useState<Row[]>(() => initialRows.map((row) => ({ ...row, key: row.id })));
-  const [state, save, pending] = useActionState(saveProjectChecklistAction, initialState);
+  const [state, save, pending] = useActionState(action, initialState);
   const [ready, setReady] = useState(false);
   const [validation, setValidation] = useState<string>();
   useEffect(() => setReady(true), []);
@@ -61,10 +76,14 @@ export function ProjectChecklistEditor({
         setValidation(undefined);
       }
     }}>
-      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name={templateName === undefined ? "projectId" : "templateId"} value={id} />
       <input type="hidden" name="version" value={version} />
       <input type="hidden" name="rows" value={JSON.stringify(rows.map(({ key: _key, ...row }) => row))} />
       <fieldset className="flex flex-col gap-4" disabled={!ready || pending}>
+        {templateName !== undefined ? <label className="grid gap-1 text-sm font-medium">
+          Nama template
+          <input name="name" value={name} onChange={(event) => setName(event.target.value)} className={field} required minLength={3} maxLength={100} />
+        </label> : null}
         {PHASES.map((phase) => {
           const group = rows.filter((row) => row.phase === phase);
           return (
@@ -110,7 +129,7 @@ export function ProjectChecklistEditor({
                               Wajib foto
                             </label>
                             <button type="button" className="w-fit min-h-11 px-1 text-sm font-medium text-red-700 dark:text-red-300" onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
-                              {row.id ? "Nonaktifkan poin" : "Hapus poin baru"}
+                              {row.id && templateName === undefined ? "Nonaktifkan poin" : "Hapus poin"}
                             </button>
                           </div>
                         </details>
@@ -128,8 +147,8 @@ export function ProjectChecklistEditor({
         })}
         {validation || state.error ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">{validation || state.error}</p> : null}
         <div className="flex flex-wrap justify-end gap-2">
-          {!pending ? <Link className="btn-secondary" href={`/projects/${projectId}?tab=checklist`}>Batal</Link> : null}
-          <button type="submit" className="btn-primary">{pending ? "Menyimpan…" : "Simpan checklist"}</button>
+          {!pending ? <Link className="btn-secondary" href={cancelHref}>Batal</Link> : null}
+          <button type="submit" className="btn-primary">{pending ? "Menyimpan…" : templateName === undefined ? "Simpan checklist" : "Simpan template"}</button>
         </div>
       </fieldset>
     </form>

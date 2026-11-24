@@ -17,104 +17,23 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await expect(page).toHaveURL(`${BASE}/`);
 }
 
-test("manager can open master checklist and sees items", async ({ page }) => {
+test("Manager sees templates for their division via the old checklist link", async ({ page }) => {
   await login(page, "manager@ops.test");
   await page.goto(`${BASE}/master/checklist-items`);
-
-  await expect(page.getByRole("heading", { name: "Master Checklist" })).toBeVisible();
-  // Seeded items are global, so a manager must see them. This spec runs at a
-  // mobile viewport, where the list renders as cards (the desktop row-list table
-  // is hidden).
-  await expect(page.locator("ul").getByText("Lampu panggung & lighting berfungsi")).toBeVisible();
+  await expect(page).toHaveURL(`${BASE}/master/templates`);
+  await expect(page.getByRole("heading", { name: "Template Divisi", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Event Production", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Standar Event Harian/ })).toBeVisible();
+  await page.getByRole("link", { name: "Upload Excel" }).click();
+  await expect(page.getByText("Event Production", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Divisi", exact: true })).toHaveCount(0);
 });
 
-test("admin creates a global checklist item and it appears in the list", async ({ page }) => {
-  await login(page, "admin@ops.test");
-  await page.goto(`${BASE}/master/checklist-items`);
-
-  const label = `Cek lampu darurat ${Date.now()}`;
-  await page.getByRole("button", { name: "+ Item" }).click();
-  await page.getByLabel("Label item").fill(label);
-  await page.getByLabel("Fase").selectOption("opening");
-  await page.getByRole("button", { name: "Tambah item" }).click();
-
-  // Shown as a card at this (mobile) viewport.
-  await expect(page.locator("ul").getByText(label)).toBeVisible();
-});
-
-test("manager sees the division locked to their own on the item form", async ({ page }) => {
-  await login(page, "manager@ops.test");
-  await page.goto(`${BASE}/master/checklist-items`);
-  await page.getByRole("button", { name: "+ Item" }).click();
-
-  // The division selector is replaced by a locked label for managers.
-  await expect(page.getByLabel("Divisi terkunci")).toBeVisible();
-  await expect(page.getByText("Hanya Admin yang bisa memindahkan item antar divisi.")).toBeVisible();
-});
-
-test("deactivating an item hides it by default but keeps it visible when toggled", async ({ page }) => {
-  await login(page, "admin@ops.test");
-  await page.goto(`${BASE}/master/checklist-items`);
-
-  // Create a dedicated item so this test does not depend on another test's data
-  // or on run order. A unique label also makes repeated runs safe.
-  const label = `Item nonaktif ${Date.now()}`;
-  await page.getByRole("button", { name: "+ Item" }).click();
-  await page.getByLabel("Label item").fill(label);
-  await page.getByRole("button", { name: "Tambah item" }).click();
-  const cards = page.locator("ul");
-  await expect(cards.getByText(label)).toBeVisible();
-
-  await page.locator("li", { hasText: label }).first().getByRole("button", { name: "Nonaktifkan" }).click();
-  await expect(page.getByText(label)).toHaveCount(0);
-
-  await page.getByLabel("Tampilkan item nonaktif").check();
-  const card = page.locator("li", { hasText: label }).first();
-  await expect(card).toBeVisible();
-  // "Nonaktif" also matches the item label case-insensitively; target the badge.
-  await expect(card.getByText("Nonaktif", { exact: true })).toBeVisible();
-});
-
-test("crew cannot reach master data (§12)", async ({ page }) => {
+test("Crew cannot open templates or download the workbook", async ({ page }) => {
   await login(page, "crew@ops.test");
-  await page.goto(`${BASE}/master/checklist-items`);
-  // Server-side redirect, not merely a hidden link.
+  await page.goto(`${BASE}/master/templates`);
   await expect(page).toHaveURL(`${BASE}/`);
-});
-
-test("templates page lists seeded templates", async ({ page }) => {
-  await login(page, "admin@ops.test");
-  await page.goto(`${BASE}/master/templates`);
-
-  await expect(page.getByRole("heading", { name: "Template Checklist" })).toBeVisible();
-  await expect(page.getByText("Standar Event Harian")).toBeVisible();
-  await expect(page.getByText("Opening & Closing Saja")).toBeVisible();
-});
-
-test("admin creates a template from master items", async ({ page }) => {
-  await login(page, "admin@ops.test");
-  await page.goto(`${BASE}/master/templates/new`);
-
-  await page.getByLabel("Nama template").fill(`Template E2E ${Date.now()}`);
-  // Opening tab is default; add two items from the pool.
-  await page.getByRole("button", { name: /Area venue bersih/ }).click();
-  await page.getByRole("button", { name: /Pintu masuk & signage/ }).click();
-
-  await expect(page.getByRole("heading", { name: /Item terpilih \(2\)/ })).toBeVisible();
-  await page.getByRole("button", { name: "Simpan template" }).click();
-
-  await expect(page.getByText("Tersimpan")).toBeVisible();
-});
-
-test("template created from project promotes custom items (§5.2)", async ({ page }) => {
-  await login(page, "admin@ops.test");
-  await page.goto(`${BASE}/master/templates`);
-
-  // With no projects in M1/M2 seed, the picker should still be present and empty-safe.
-  await page.getByRole("button", { name: "Dari project lama" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Simpan checklist project sebagai template" }),
-  ).toBeVisible();
+  expect((await page.request.get(`${BASE}/api/division-templates/workbook`)).status()).toBe(403);
 });
 
 test("admin manages issue categories", async ({ page }) => {

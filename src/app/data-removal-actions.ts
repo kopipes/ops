@@ -13,8 +13,13 @@ function errorMessage(err: unknown): string {
   return "Tindakan gagal. Data belum diubah. Coba lagi.";
 }
 
+function isCurrentEntity(entity: unknown): entity is RemovalEntity {
+  return entity === "user" || entity === "division" || entity === "issue_category";
+}
+
 export async function previewRemovalAction(entity: RemovalEntity, id: string): Promise<{ preview?: RemovalPreview; error?: string }> {
   const { user } = await requireUserWithoutPasswordChange();
+  if (!isCurrentEntity(entity)) return { error: "Jenis data tidak tersedia." };
   try { return { preview: previewDataRemoval(getDb(), user, entity, id) }; }
   catch (err) { return { error: errorMessage(err) }; }
 }
@@ -23,6 +28,7 @@ export async function removeDataAction(_prev: RemovalState, formData: FormData):
   const { user } = await requireUserWithoutPasswordChange();
   const parsed = removalSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Data tidak valid" };
+  if (!isCurrentEntity(parsed.data.entity)) return { error: "Jenis data tidak tersedia." };
   let result: RemovalPreview;
   try { result = removeData(getDb(), user, parsed.data); }
   catch (err) { return { error: errorMessage(err) }; }
@@ -32,7 +38,8 @@ export async function removeDataAction(_prev: RemovalState, formData: FormData):
 
 export async function reactivateDataAction(_prev: RemovalState, formData: FormData): Promise<RemovalState> {
   const { user } = await requireUserWithoutPasswordChange();
-  try { reactivateMasterData(getDb(), user, String(formData.get("entity")) as RemovalEntity, String(formData.get("id") ?? "")); }
+  if (formData.get("entity") !== "issue_category") return { error: "Jenis data tidak tersedia." };
+  try { reactivateMasterData(getDb(), user, "issue_category", String(formData.get("id") ?? "")); }
   catch (err) { return { error: errorMessage(err) }; }
   revalidatePath("/", "layout");
   return { ok: true, message: "Data diaktifkan kembali." };

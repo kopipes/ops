@@ -9,7 +9,6 @@ import type { ActingUser } from "@/server/permissions";
 import { REMOVAL_ENTITIES, type RemovalEntity } from "@/lib/data-removal";
 import { previewDataRemoval, reactivateMasterData, removeData } from "./data-removal";
 import { recordTemplateUsage } from "./templates";
-import { createProject } from "./projects";
 
 let raw: Database.Database;
 let db: ReturnType<typeof drizzle<typeof schema>>;
@@ -96,10 +95,6 @@ describe("Admin data removal", () => {
   it("preserves templates whose items occur in project snapshots", () => {
     project();raw.exec("insert into checklist_template_items (template_id,checklist_item_id) values ('template','checklist_item'); insert into project_checklist_items (id,project_id,source_item_id,phase,category_name,label,created_at,updated_at) values ('snapshot','project','checklist_item','opening','Category','Old label',1,1)");
     remove("template","archive");expect(row("template")).toMatchObject({is_active:0});expect(raw.prepare("select label from project_checklist_items").get()).toEqual({label:"Old label"});
-  });
-  it("records future template use even for empty templates", async () => {
-    const input={code:"NEW",name:"New project",venue:"Venue",startDate:"2026-11-18",endDate:"2026-11-18",timezone:"Asia/Jakarta",ownerDivisionId:"base",additionalDivisionIds:[],openingWindowStart:"06:00",openingWindowEnd:"11:00",closingWindowStart:"17:00",closingWindowEnd:"23:59",saveAsDraft:true,checklistSource:"template" as const,templateIds:["template"],sourceProjectId:null,checklistItems:[],members:[]};
-    await createProject(db,admin,input);expect(remove("template","archive").mode).toBe("archive");
   });
   it("retains historical templates after a migration even if all their items changed", () => {
     raw.exec(readFileSync(resolve("src/server/db/migrations/0004_template_removal_history.sql"), "utf8"));

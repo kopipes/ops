@@ -71,6 +71,13 @@
       "when": 1795400000000,
       "tag": "0009_reuse_deleted_project_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795480000000,
+      "tag": "0010_division_checklist_templates",
+      "breakpoints": true
     }
   ]
 }

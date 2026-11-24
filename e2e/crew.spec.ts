@@ -46,8 +46,8 @@ async function createTodayProject(page: Page, name: string, opts: { lead?: boole
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // checklist: pick template with opening+closing items
-  await visible.locator('fieldset input[type="checkbox"]').first().check();
-  await expect(page.locator('input[name="cl_label"]').first()).toBeAttached();
+  await page.getByLabel("Template untuk divisi owner").selectOption("demo-division-tpl-standard");
+  await expect(page.getByRole("checkbox", { name: "Sertakan Area venue bersih dan siap dipakai", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // members: add crew@ and promote to lead when requested

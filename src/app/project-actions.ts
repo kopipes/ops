@@ -34,9 +34,9 @@ import {
 } from "@/server/services/members";
 import {
   buildChecklistFromProject,
-  buildChecklistFromTemplates,
-  syncProjectChecklist,
+  type SnapshotRow,
 } from "@/server/services/project-checklist";
+import { readDivisionTemplate } from "@/server/services/division-templates";
 import { editProjectChecklist } from "@/server/services/project-checklist-editor";
 import { divisions } from "@/server/db/schema";
 import { canCreateProject, canViewProjectWorkspace } from "@/server/permissions";
@@ -127,20 +127,17 @@ function parseProjectForm(formData: FormData) {
   const labels = formData.getAll("cl_label").map(String);
   const phases = formData.getAll("cl_phase").map(String);
   const categories = formData.getAll("cl_category").map(String);
-  const sourceIds = formData.getAll("cl_source").map(String);
   const requireds = formData.getAll("cl_required").map(String);
   const photos = formData.getAll("cl_photo").map(String);
-  const saveToMaster = formData.getAll("cl_savemaster").map(String);
 
   const checklistItems = labels.map((label, i) => ({
-    sourceItemId: sourceIds[i] && sourceIds[i] !== "" ? sourceIds[i] : null,
+    sourceItemId: null,
     phase: phases[i] as "opening" | "monitoring" | "closing",
     categoryName: categories[i] || "Umum",
     label,
     description: null,
     isRequired: requireds[i] === "1",
     requiresPhoto: photos[i] === "1",
-    saveToMaster: saveToMaster[i] === "1",
   }));
 
   return projectInputSchema.safeParse({
@@ -159,37 +156,52 @@ function parseProjectForm(formData: FormData) {
   });
 }
 
-/**
- * Builds the final checklist rows for the wizard: the chosen source, merged with
- * anything the manager hand-added or unchecked in step 3.
- */
-export async function resolveWizardChecklist(
-  formData: FormData,
-): Promise<{ rows: Awaited<ReturnType<typeof buildChecklistFromTemplates>> }> {
-  const {user}=await requireUserWithoutPasswordChange();
-  if(!canCreateProject(user))throw new ForbiddenError("Kamu tidak berhak membuat checklist project");
+export async function resolveWizardChecklist(formData: FormData) {
+  const { user } = await requireUserWithoutPasswordChange();
+  if (!canCreateProject(user)) throw new ForbiddenError("Kamu tidak berhak membuat checklist project");
   const db = getDb();
-  const source = (formData.get("checklistSource") as string) ?? "empty";
-  const templateIds = formData.getAll("templateIds").map(String).filter(Boolean);
   const sourceProjectId = String(formData.get("sourceProjectId") ?? "").trim();
-
-  let base: Awaited<ReturnType<typeof buildChecklistFromTemplates>> = [];
-  if (source === "template") base = await buildChecklistFromTemplates(db, templateIds);
-  else if (source === "project" && sourceProjectId) {
-    if(!canViewProjectWorkspace(user,await loadFacts(db,sourceProjectId)))throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
-    base = await buildChecklistFromProject(db, sourceProjectId);
+  let rows: Omit<SnapshotRow, "id" | "projectId">[] = [];
+  if (formData.get("checklistSource") === "project" && sourceProjectId) {
+    if (!canViewProjectWorkspace(user, await loadFacts(db, sourceProjectId))) {
+      throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
+    }
+    rows = await buildChecklistFromProject(db, sourceProjectId);
   }
+  const removed = new Set(formData.getAll("cl_removed").map(String));
+  return { rows: rows.filter((row) => !removed.has(row.sourceItemId ?? `${row.phase}::${row.label}`)) };
+}
 
-  // Rows the user unchecked are submitted with cl_removed=<sourceKey>.
-  const removedKeys = new Set(formData.getAll("cl_removed").map(String));
-  return { rows: base.filter((r) => !removedKeys.has(r.sourceItemId ?? `${r.phase}::${r.label}`)) };
+export async function previewProjectChecklistAction(kind: "template" | "project", id: string, divisionId: string) {
+  const { user } = await requireUserWithoutPasswordChange();
+  if (!canCreateProject(user)) return { error: "Kamu tidak berhak memilih checklist project." };
+  const db = getDb();
+  try {
+    if (kind === "template") {
+      const template = readDivisionTemplate(db, user, id);
+      if (!template.isActive || !template.divisionActive || template.divisionId !== divisionId || !template.rows.length) {
+        throw new ValidationError("Pilih template aktif dari divisi owner project.");
+      }
+      return { version: template.version, rows: template.rows.map((row) => ({
+        key: row.id, sourceItemId: null, phase: row.phase, categoryName: row.categoryName,
+        label: row.label, isRequired: row.isRequired, requiresPhoto: row.requiresPhoto,
+      })) };
+    }
+    if (kind !== "project" || !canViewProjectWorkspace(user, await loadFacts(db, id))) {
+      throw new ForbiddenError("Project sumber tidak tersedia dalam aksesmu");
+    }
+    const rows = await buildChecklistFromProject(db, id);
+    return { version: 0, rows: rows.map((row) => ({ ...row, key: row.sourceItemId ?? `${row.phase}::${row.label}` })) };
+  } catch (error) {
+    return toError(error);
+  }
 }
 
 export async function saveProjectAction(
   _prev: ProjectActionState,
   formData: FormData,
 ): Promise<ProjectActionState> {
-  const user = await acting();
+  const { user } = await requireUserWithoutPasswordChange();
   const parsed = parseProjectForm(formData);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
@@ -197,29 +209,12 @@ export async function saveProjectAction(
 
   try {
     const db = getDb();
-    // Authorize and resolve source data before creating any destination rows.
     const { rows } = await resolveWizardChecklist(formData);
-    const { projectId } = await createProject(db, user, parsed.data);
-
-    /*
-     * Snapshot the checklist (§5.3 no.4).
-     *
-     * `resolveWizardChecklist` is the single source of truth: it merges the chosen
-     * template(s) / source project, drops unchecked rows, and appends the custom
-     * rows the manager typed in step 3. `parsed.data.checklistItems` is derived
-     * from the SAME hidden cl_* fields, so appending it separately inserted every
-     * item twice — which made reports render each checklist line two times.
-     */
-    const saveCustom = formData.get("saveCustomToMaster") === "on";
-
-    if (rows.length > 0) {
-      await syncProjectChecklist(db, projectId, {
-        rows,
-        saveCustomToMaster: saveCustom,
-        actor: user,
-        divisionId: parsed.data.ownerDivisionId,
-      });
-    }
+    const { projectId } = await createProject(db, user, parsed.data, {
+      templateVersion: Number(formData.get("templateVersion")),
+      removedTemplateRows: formData.getAll("cl_removed").map(String),
+      copiedRows: rows,
+    });
 
     revalidateProject(projectId);
     // Wizard step 5 ("Review & Simpan"): go straight to the new project.

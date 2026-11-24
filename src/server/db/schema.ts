@@ -145,6 +145,35 @@ export const checklistTemplateItems = sqliteTable("checklist_template_items", {
   pk: primaryKey({ columns: [t.templateId, t.checklistItemId] }),
 }));
 
+export const divisionChecklistTemplates = sqliteTable("division_checklist_templates", {
+  id: text("id").primaryKey(),
+  divisionId: text("division_id").notNull().references(() => divisions.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdBy: text("created_by").references(() => users.id),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  version: integer("version").notNull().default(1),
+  createdAt,
+  updatedAt,
+}, (t) => ({
+  divisionIx: index("division_checklist_templates_division_ix").on(t.divisionId, t.isActive),
+}));
+
+export const divisionChecklistTemplateItems = sqliteTable("division_checklist_template_items", {
+  id: text("id").primaryKey(),
+  templateId: text("template_id").notNull().references(() => divisionChecklistTemplates.id, { onDelete: "cascade" }),
+  phase: text("phase", { enum: ["opening", "monitoring", "closing"] }).notNull(),
+  categoryName: text("category_name").notNull(),
+  label: text("label").notNull(),
+  description: text("description"),
+  isRequired: integer("is_required", { mode: "boolean" }).notNull().default(true),
+  requiresPhoto: integer("requires_photo", { mode: "boolean" }).notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (t) => ({
+  orderIx: index("division_checklist_template_items_order_ix").on(t.templateId, t.sortOrder),
+}));
+
+
 // ---------------------------------------------------------------------------
 // 11.3 Project
 // ---------------------------------------------------------------------------
