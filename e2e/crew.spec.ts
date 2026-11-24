@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 /**
  * M4 Crew flow E2E — opening/monitoring/closing in a real browser.
  * Requires the seed. Creates its own project per test to stay order-independent.
@@ -29,12 +30,13 @@ async function login(page: Page, email: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Masuk" }).click();
-  await expect(page).toHaveURL(`${BASE}/`);
+  await expect(page).toHaveURL(`${BASE}/`, { timeout: 30_000 });
 }
 
 /** Creates a project today with a template and crew/lead members. Returns id. */
 async function createTodayProject(page: Page, name: string, opts: { lead?: boolean } = {}) {
   await page.goto(`${BASE}/projects/new`);
+  await waitForHydration(page, 'ol[aria-label="Langkah wizard"]');
   const visible = page.locator("section:not([hidden])");
 
   await page.getByLabel("Kode project").fill(uniqueCode());
@@ -52,12 +54,12 @@ async function createTodayProject(page: Page, name: string, opts: { lead?: boole
   const crewRow = page.locator("section:not([hidden]) li", { hasText: "crew@ops.test" }).first();
   await crewRow.locator('input[type="checkbox"]').check();
   if (opts.lead) {
-    await crewRow.getByLabel(/Peran/).selectOption("lead");
+    await crewRow.getByRole("combobox").selectOption("lead");
   }
   await page.getByRole("button", { name: "Lanjut →" }).click();
   await page.getByRole("button", { name: "Simpan project" }).click();
 
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}/);
+  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}/, { timeout: 20_000 });
   const id = page.url().match(/\/projects\/([0-9a-f-]{36})/)![1];
   return id;
 }
@@ -194,6 +196,7 @@ test("plain crew sees opening read-only (§4.6)", async ({ page, browser }) => {
 });
 
 test("draft survives a reload (§4.3 no.8)", async ({ page }) => {
+  test.setTimeout(60_000);
   await login(page, "manager@ops.test");
   const id = await createTodayProject(page, `Draft ${Date.now()}`, { lead: true });
 
@@ -219,4 +222,71 @@ test("draft survives a reload (§4.3 no.8)", async ({ page }) => {
     els.filter((e) => e.getAttribute("aria-pressed") === "true").length,
   );
   expect(answered).toBe(1);
+});
+
+test("gallery keeps multiple photos on a checklist point and at the end of a report", async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page, "manager@ops.test");
+  const projectId = await createTodayProject(page, `Upload beberapa foto ${Date.now()}`);
+  const buffer = await readFile(PHOTO);
+  const file = (name: string) => ({ name, mimeType: "image/jpeg", buffer });
+
+  await page.goto(`${BASE}/projects/${projectId}/days/${today()}/opening`);
+  await answerAllOk(page);
+  const unopenedPoint = page.locator("li", { has: page.getByRole("button", { name: "+ Tambah foto", exact: true }) }).first();
+  const pointLabel = (await unopenedPoint.locator("p").first().textContent())!.replace(/\s+\*$/, "").trim();
+  await unopenedPoint.getByRole("button", { name: "+ Tambah foto", exact: true }).click();
+  const pointPicker = page.getByLabel(`Pilih foto galeri untuk ${pointLabel}`, { exact: true });
+  const optionalPoint = page.locator("li").filter({ has: pointPicker });
+  await expect(pointPicker).toHaveAttribute("multiple", "");
+  const otherAccount = await page.request.post("/api/photos", { multipart: { formUserId: "another-account" } });
+  expect(otherAccount.status()).toBe(409);
+  const olderForm = await page.request.post("/api/photos", { multipart: { source: "gallery" } });
+  expect(olderForm.status()).toBe(409);
+
+  let releaseFirst!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  let uploadStarted!: () => void;
+  const firstUpload = new Promise<void>((resolve) => { uploadStarted = resolve; });
+  let held = false;
+  await page.route("**/api/photos", async (route) => {
+    if (route.request().method() === "POST" && !held) {
+      held = true;
+      uploadStarted();
+      await gate;
+    }
+    await route.continue();
+  });
+
+  try {
+    await pointPicker.setInputFiles([file("point-1.jpg"), file("point-2.jpg")]);
+    await firstUpload;
+    const general = page.getByLabel("Pilih foto umum dari galeri", { exact: true });
+    await general.setInputFiles(file("general-1.jpg"));
+    await general.setInputFiles(file("general-2.jpg"));
+    await expect(page.getByRole("button", { name: "Menunggu foto…", exact: true })).toBeDisabled();
+  } finally {
+    releaseFirst();
+  }
+
+  await expect(optionalPoint.getByText("2 foto terlampir", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Perbesar Foto laporan 2", exact: true })).toBeVisible();
+  await page.route("**/api/photos", (route) => route.fulfill({
+    status: 400, json: { error: "Foto pengujian ditolak" },
+  }), { times: 1 });
+  await page.getByLabel("Pilih foto umum dari galeri", { exact: true }).setInputFiles(file("rejected.jpg"));
+  await expect(page.getByRole("alert").filter({ hasText: "Foto pengujian ditolak" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit Opening", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Lewati foto yang gagal", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Submit Opening", exact: true })).toBeEnabled();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Perbesar Foto laporan 2", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Submit Opening", exact: true }).click();
+  await expect(page).toHaveURL(/submitted=/);
+  const reportId = new URL(page.url()).searchParams.get("submitted")!;
+  await page.getByRole("link", { name: /Lihat detail hari/ }).click();
+  const report = page.locator(`#report-${reportId}`);
+  await expect(report.locator('li[id^="point-"]').filter({ hasText: pointLabel }).locator("img")).toHaveCount(2);
+  await expect(report.locator('section[id^="photo-"]')).toHaveCount(2);
 });

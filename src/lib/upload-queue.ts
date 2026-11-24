@@ -26,6 +26,9 @@ export interface UploadJob {
   itemId: string | null;
   projectId: string;
   projectDayId: string;
+  /** Keep uploads scoped to one report, even if the day has several reports. */
+  draftId?: string;
+  ownerId?: string;
   source: "camera" | "gallery";
   filename: string;
   status: JobStatus;
@@ -74,8 +77,9 @@ async function withStore<T>(
     return await new Promise<T | null>((resolve) => {
       const tx = db.transaction(STORE, mode);
       const req = fn(tx.objectStore(STORE));
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => resolve(null);
+      tx.oncomplete = () => resolve(req.result ?? null);
+      tx.onerror = () => resolve(null);
+      tx.onabort = () => resolve(null);
     });
   } finally {
     db.close();
@@ -85,7 +89,7 @@ async function withStore<T>(
 export const backoffMs = (attempts: number) =>
   Math.min(BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), 60_000);
 
-export async function enqueue(job: Omit<UploadJob, "id" | "status" | "attempts" | "lastError" | "nextAttemptAt" | "photoId" | "createdAt" | "updatedAt">): Promise<string> {
+export async function enqueue(job: Omit<UploadJob, "id" | "status" | "attempts" | "lastError" | "nextAttemptAt" | "photoId" | "createdAt" | "updatedAt"> & { draftId: string; ownerId: string }): Promise<string> {
   const now = Date.now();
   const id = job.clientUploadId;
   const full: UploadJob = {
@@ -99,7 +103,8 @@ export async function enqueue(job: Omit<UploadJob, "id" | "status" | "attempts" 
     createdAt: now,
     updatedAt: now,
   };
-  await withStore("readwrite", (s) => s.put(full));
+  const stored = await withStore("readwrite", (s) => s.put(full));
+  if (stored === null) throw new Error("Foto belum tersimpan di perangkat. Pilih ulang foto dan coba lagi.");
   return id;
 }
 
@@ -131,44 +136,57 @@ export async function clearCompleted(): Promise<void> {
 }
 
 /**
- * Processes the queue until nothing is pending. Safe to call repeatedly;
- * a second call while running is a no-op.
+ * Overlapping callers wait for the same drain. Rescan if new files arrived
+ * while the worker was reading its final snapshot.
  */
-let running = false;
+type DrainResult = { uploaded: number; failed: number };
+const running = new Map<string, Promise<DrainResult>>();
+const rescanRequested = new Set<string>();
 
-export async function processQueue(
-  onProgress?: (jobs: UploadJob[]) => void,
-): Promise<{ uploaded: number; failed: number }> {
-  if (running) return { uploaded: 0, failed: 0 };
-  running = true;
+export function processQueue(ownerId: string): Promise<DrainResult> {
+  const active = running.get(ownerId);
+  if (active) {
+    rescanRequested.add(ownerId);
+    return active;
+  }
+  const drain = drainQueue(ownerId);
+  running.set(ownerId, drain);
+  return drain;
+}
 
+async function drainQueue(ownerId: string): Promise<DrainResult> {
   let uploaded = 0;
   let failed = 0;
 
   try {
     for (;;) {
+      rescanRequested.delete(ownerId);
       const jobs = await listJobs();
       const now = Date.now();
       const ready = jobs.filter(
-        (j) => j.status !== "done" && j.attempts < MAX_ATTEMPTS && j.nextAttemptAt <= now,
+        (j) => j.ownerId === ownerId && j.draftId && j.status !== "done" && j.status !== "failed" &&
+          j.attempts < MAX_ATTEMPTS && j.nextAttemptAt <= now,
       );
-      if (ready.length === 0) break;
+      if (ready.length === 0) {
+        if (rescanRequested.has(ownerId)) continue;
+        break;
+      }
 
       // Bounded concurrency.
       const batch = ready.slice(0, CONCURRENCY);
-      const results = await Promise.all(batch.map((job) => attempt(job)));
+      const results = await Promise.all(batch.map((job) => attempt(job, ownerId)));
       uploaded += results.filter((r) => r === "done").length;
       failed += results.filter((r) => r === "failed").length;
-      onProgress?.(await listJobs());
     }
   } finally {
-    running = false;
+    running.delete(ownerId);
+    rescanRequested.delete(ownerId);
   }
 
   return { uploaded, failed };
 }
 
-async function attempt(job: UploadJob): Promise<"done" | "retry" | "failed"> {
+async function attempt(job: UploadJob, ownerId: string): Promise<"done" | "retry" | "failed"> {
   await updateJob(job.id, { status: "uploading" });
 
   try {
@@ -179,6 +197,7 @@ async function attempt(job: UploadJob): Promise<"done" | "retry" | "failed"> {
     fd.set("file", new File([compressed.blob], "photo.webp", { type: compressed.blob.type }));
     fd.set("source", job.source);
     fd.set("clientUploadId", job.clientUploadId);
+    fd.set("formUserId", ownerId);
     if (compressed.takenAt) fd.set("takenAt", String(compressed.takenAt));
 
     const res = await fetch("/api/photos", { method: "POST", body: fd });
@@ -210,11 +229,4 @@ async function attempt(job: UploadJob): Promise<"done" | "retry" | "failed"> {
     });
     return "retry";
   }
-}
-
-/** Resumes work left over from a previous session (§8.4). */
-export async function resumeQueue(): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (!navigator.onLine) return;
-  void processQueue();
 }

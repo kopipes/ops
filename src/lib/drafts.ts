@@ -104,7 +104,7 @@ export async function clearDraft(key: string): Promise<void> {
   }
 }
 
-export const draftKey = (projectDayId: string, phase: string) => `${projectDayId}:${phase}`;
+export const draftKey = (ownerId: string, projectDayId: string, phase: string) => `${ownerId}:${projectDayId}:${phase}`;
 
 /** UUID for the idempotency key; falls back when crypto.randomUUID is absent. */
 export function newSubmissionId(): string {

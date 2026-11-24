@@ -28,6 +28,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
   }
 
+  const formUserId = form.get("formUserId");
+  if (formUserId !== session.user.id) {
+    return NextResponse.json({ error: "Akun berubah. Buka ulang Pulse sebelum mengunggah foto." }, { status: 409 });
+  }
+
   const projectId = String(form.get("projectId") ?? "");
   const projectDayIdRaw = String(form.get("projectDayId") ?? "");
   const file = form.get("file");

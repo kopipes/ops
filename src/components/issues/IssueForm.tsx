@@ -26,6 +26,7 @@ export interface IssueFormValues {
 }
 
 interface Props {
+  ownerId: string;
   action: (prev: IssueActionState, formData: FormData) => Promise<IssueActionState>;
   projects: { id: string; name: string; code: string }[];
   categories: { id: string; name: string }[];
@@ -44,6 +45,7 @@ const inputStyle = {
 } as const;
 
 export function IssueForm({
+  ownerId,
   action,
   projects,
   categories,
@@ -69,6 +71,7 @@ export function IssueForm({
     try {
       const compressed = await compressPhoto(file);
       const fd = new FormData();
+      fd.set("formUserId", ownerId);
       fd.set("projectId", projectId);
       fd.set("projectDayId", initial?.projectDayId ?? "");
       fd.set("file", new File([compressed.blob], "photo.webp", { type: compressed.blob.type }));

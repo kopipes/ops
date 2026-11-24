@@ -97,6 +97,7 @@ export async function CrewReportPage({
       <div id="form-laporan" className="scroll-mt-4" />
       <ReportForm
         action={submitReportAction}
+        ownerId={session.user.id}
         phase={phase}
         projectId={projectId}
         projectDayId={ctx.day.id}

@@ -54,6 +54,11 @@ export async function submitReportAction(
   formData: FormData,
 ): Promise<ReportFormActionState> {
   const session = await requireUser();
+  const formUserId = formData.get("formUserId");
+  if (formUserId !== session.user.id) {
+    return { error: "Akun berubah. Buka ulang Pulse sebelum mengirim laporan." };
+  }
+
 
   const projectId = String(formData.get("projectId") ?? "");
   const projectDayId = String(formData.get("projectDayId") ?? "");

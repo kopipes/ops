@@ -21,6 +21,7 @@ export interface EditableResult {
 }
 
 export function EditReportForm({
+  ownerId,
   action,
   generalPhotos,
   projectId,
@@ -35,6 +36,7 @@ export function EditReportForm({
   timezone,
   results,
 }: {
+  ownerId: string;
   action: (prev: EditReportState, formData: FormData) => Promise<EditReportState>;
   generalPhotos:GeneralPhotoGroup[];
   projectId:string;
@@ -59,7 +61,7 @@ export function EditReportForm({
     if(!files)return;setUploading(n=>n+1);setState({});
     try {for(const file of Array.from(files)) {
       const compressed=await compressPhoto(file);const data=new FormData();data.set("file",compressed.blob,file.name||"photo.jpg");
-      data.set("projectId",projectId);data.set("projectDayId",projectDayId);data.set("source",source);data.set("clientUploadId",crypto.randomUUID());
+      data.set("formUserId",ownerId);data.set("projectId",projectId);data.set("projectDayId",projectDayId);data.set("source",source);data.set("clientUploadId",crypto.randomUUID());
       const response=await fetch("/api/photos",{method:"POST",body:data});const result=await response.json();
       if(!response.ok)throw new Error(result.error??"Upload gagal");
       setUploads(prev=>({...prev,[itemId]:[...(prev[itemId]??[]),result.photoId]}));

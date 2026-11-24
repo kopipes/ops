@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoGallery } from "@/components/reports/PhotoGallery";
 import { compressPhoto } from "@/lib/image-compression";
 import { clearDraft, draftKey, loadDraft, newSubmissionId, saveDraft } from "@/lib/drafts";
-import { enqueue, listJobs, processQueue, resumeQueue } from "@/lib/upload-queue";
+import { enqueue, listJobs, processQueue, removeJob, updateJob } from "@/lib/upload-queue";
 import type { ReportFormActionState } from "@/app/report-actions";
 import { formatReportTimestamp } from "@/lib/datetime";
 
@@ -39,6 +39,7 @@ export interface ExistingReport {
 interface Props {
   action: (prev: ReportFormActionState, formData: FormData) => Promise<ReportFormActionState>;
   phase: "opening" | "monitoring" | "closing";
+  ownerId: string;
   projectId: string;
   projectDayId: string;
   dayDate: string;
@@ -71,6 +72,7 @@ const PHASE_TITLE: Record<Props["phase"], string> = {
 
 export function ReportForm({
   action,
+  ownerId,
   phase,
   projectId,
   projectDayId,
@@ -96,6 +98,14 @@ export function ReportForm({
   const [phaseNote, setPhaseNote] = useState(existing?.phaseNote ?? "");
   const [handoverNote, setHandoverNote] = useState(existing?.handoverNote ?? "");
   const [generalPhotoIds, setGeneralPhotoIds] = useState<string[]>([]);
+  const [optionalPhotoItems, setOptionalPhotoItems] = useState<string[]>([]);
+  const [uploadBatches, setUploadBatches] = useState(0);
+  const [queuedUploads, setQueuedUploads] = useState(0);
+  const [queueReady, setQueueReady] = useState(false);
+  const [nextRetryAt, setNextRetryAt] = useState<number | null>(null);
+  const [failedUploads, setFailedUploads] = useState<{ ids: string[]; message: string | null }>({ ids: [], message: null });
+  const [unsavedUploads, setUnsavedUploads] = useState(0);
+  const activeUploads = useRef(0);
   const [gps, setGps] = useState<{ lat: string; lng: string; acc: number } | null>(null);
   const [gpsDenied, setGpsDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +114,7 @@ export function ReportForm({
   const [hydrated, setHydrated] = useState(false);
 
   const submissionIdRef = useRef(newSubmissionId());
-  const key = draftKey(projectDayId, phase);
+  const key = draftKey(ownerId, projectDayId, phase);
 
   // --- restore a local draft (§4.3 no.8) ---
   useEffect(() => {
@@ -144,52 +154,89 @@ export function ReportForm({
     };
   }, [key, items, readOnly]);
 
-  // --- autosave on every change ---
+  const persistDraft = useCallback(() => saveDraft({
+    key, projectId, projectDayId, phase, notes, phaseNote, observedTime,
+    observedAt: Date.now(),
+    results: Object.entries(answers)
+      .filter(([, answer]) => answer.result !== null)
+      .map(([id, answer]) => ({
+        projectChecklistItemId: id, result: answer.result!, note: answer.note, photoIds: answer.photoIds,
+      })),
+    photoIds: generalPhotoIds,
+    handoverNote: phase === "closing" ? handoverNote : undefined,
+    clientSubmissionId: submissionIdRef.current,
+    updatedAt: Date.now(),
+  }), [answers, generalPhotoIds, handoverNote, key, notes, observedTime, phase, phaseNote, projectDayId, projectId]);
+
   useEffect(() => {
     if (!hydrated || readOnly || pending) return;
-    const timer = setTimeout(() => {
-      void saveDraft({
-        key,
-        projectId,
-        projectDayId,
-        phase,
-        notes,
-        phaseNote,
-        observedAt: Date.now(),
-        observedTime,
-        /*
-         * Persist only items the crew actually answered. Coercing an unanswered
-         * item to "ok" made the draft restore it as answered-but-photoless, so
-         * submit then failed with "Foto wajib untuk item: …" for a form that
-         * looked completely filled in.
-         */
-        results: Object.entries(answers)
-          .filter(([, a]) => a.result !== null)
-          .map(([id, a]) => ({
-            projectChecklistItemId: id,
-            result: a.result as "ok" | "not_ok" | "na",
-            note: a.note,
-            photoIds: a.photoIds,
-          })),
-        photoIds: generalPhotoIds,
-        handoverNote: phase === "closing" ? handoverNote : undefined,
-        clientSubmissionId: submissionIdRef.current,
-        updatedAt: Date.now(),
-      });
-    }, 600);
+    const timer = setTimeout(() => void persistDraft(), 600);
     return () => clearTimeout(timer);
-  }, [hydrated, readOnly, pending, observedTime, answers, notes, phaseNote, generalPhotoIds, handoverNote, key, projectId, projectDayId, phase]);
+  }, [hydrated, readOnly, pending, persistDraft]);
 
-  // --- resume uploads left over from a previous session (§8.4) ---
+  const syncUploads = useCallback(async () => {
+    const draftId = submissionIdRef.current;
+    try {
+      if (navigator.onLine) await processQueue(ownerId);
+      const jobs = (await listJobs()).filter((job) => (
+        job.ownerId === ownerId && job.draftId === draftId && job.projectId === projectId && job.projectDayId === projectDayId
+      ));
+      if (submissionIdRef.current !== draftId) return;
+
+      const points = new Map<string, string[]>();
+      const general: string[] = [];
+      for (const job of jobs) {
+        if (job.status !== "done" || !job.photoId) continue;
+        if (job.itemId) {
+          const photoIds = points.get(job.itemId) ?? [];
+          photoIds.push(job.photoId);
+          points.set(job.itemId, photoIds);
+        } else {
+          general.push(job.photoId);
+        }
+      }
+
+      setAnswers((current) => {
+        let updated = current;
+        for (const [itemId, photoIds] of points) {
+          const answer = updated[itemId];
+          if (!answer || photoIds.every((id) => answer.photoIds.includes(id))) continue;
+          updated = { ...updated, [itemId]: { ...answer, photoIds: [...new Set([...answer.photoIds, ...photoIds])] } };
+        }
+        return updated;
+      });
+      setGeneralPhotoIds((current) => general.every((id) => current.includes(id)) ? current : [...new Set([...current, ...general])]);
+      const waiting = jobs.filter((job) => job.status === "pending" || job.status === "uploading");
+      setQueuedUploads(waiting.length);
+      setNextRetryAt(waiting.length ? Math.min(...waiting.map((job) => job.nextAttemptAt)) : null);
+      const failed = jobs.filter((job) => job.status === "failed");
+      setFailedUploads({ ids: failed.map((job) => job.id), message: failed[0]?.lastError ?? null });
+      if (waiting.length && !navigator.onLine) setError("Tidak ada koneksi. Foto akan diunggah saat koneksi kembali.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Foto belum berhasil diunggah.");
+    }
+  }, [ownerId, projectDayId, projectId]);
+
   useEffect(() => {
-    if (readOnly) return;
-    void resumeQueue();
+    if (!hydrated || readOnly) return;
+    let mounted = true;
+    void syncUploads().then(() => { if (mounted) setQueueReady(true); });
     const onOnline = () => {
-      void processQueue();
+      setError(null);
+      void syncUploads();
     };
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, [readOnly]);
+    return () => {
+      mounted = false;
+      window.removeEventListener("online", onOnline);
+    };
+  }, [hydrated, readOnly, syncUploads]);
+
+  useEffect(() => {
+    if (!hydrated || readOnly || nextRetryAt === null || !navigator.onLine) return;
+    const timer = setTimeout(() => void syncUploads(), Math.max(250, nextRetryAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [hydrated, readOnly, nextRetryAt, syncUploads]);
 
   // --- optional GPS (§8.5): never blocks submit ---
   useEffect(() => {
@@ -216,82 +263,73 @@ export function ReportForm({
     [],
   );
 
-  /**
-   * Enqueues the photo in the durable queue (§8.4), then drains the queue.
-   * The blob is persisted first, so closing the app mid-upload does not lose it.
-   */
-  const uploadPhoto = async (
-    id: string | null,
-    file: File,
-    source: "camera" | "gallery" = "gallery",
-  ) => {
-    const patch = (fn: (a: AnswerState) => Partial<AnswerState>) => {
-      if (id) setAnswers((prev) => ({ ...prev, [id]: { ...prev[id], ...fn(prev[id]) } }));
-    };
+  async function uploadPhotos(id: string | null, files: File[], source: "camera" | "gallery") {
+    if (!files.length || !hydrated || pending) return;
+    const draftId = submissionIdRef.current;
 
-    if (id) patch((a) => ({ uploading: a.uploading + 1 }));
+    function adjustItemUploads(change: number) {
+      if (!id) return;
+      setAnswers((current) => ({
+        ...current,
+        [id]: { ...current[id], uploading: Math.max(0, current[id].uploading + change) },
+      }));
+    }
+
+    activeUploads.current += 1;
+    setUploadBatches((count) => count + 1);
+    adjustItemUploads(files.length);
     setError(null);
     try {
-      await enqueue({
-        clientUploadId: newSubmissionId(),
-        itemId: id,
-        projectId,
-        projectDayId,
-        source,
-        filename: file.name || "photo.jpg",
-        blob: file,
-      });
-
-      // Offline: leave it queued and tell the crew honestly.
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
-        setError("Tidak ada koneksi — foto menunggu dan akan diunggah otomatis.");
-        return;
-      }
-
-      const before = await listJobs();
-      const pendingIds = new Set(
-        before.filter((j) => j.status !== "done" && j.status !== "failed").map((j) => j.id),
-      );
-
-      await processQueue();
-
-      // Collect every photo that finished, including ones from an earlier attempt.
-      const jobs = await listJobs();
-      const finished = jobs.filter((j) => j.status === "done" && j.photoId && pendingIds.has(j.id));
-
-      for (const job of finished) {
-        if (job.itemId) {
-          setAnswers((prev) => {
-            const cur = prev[job.itemId!];
-            if (!cur || cur.photoIds.includes(job.photoId!)) return prev;
-            return { ...prev, [job.itemId!]: { ...cur, photoIds: [...cur.photoIds, job.photoId!] } };
-          });
-        } else {
-          setGeneralPhotoIds((prev) =>
-            prev.includes(job.photoId!) ? prev : [...prev, job.photoId!],
-          );
-        }
-      }
-
-      const failedNow = jobs.filter(
-        (j) => j.status === "failed" && pendingIds.has(j.id),
-      );
-      if (failedNow.length > 0) {
-        setError(failedNow[0].lastError ?? "Sebagian foto gagal diunggah");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload gagal");
+      // Persist the draft ID before its first batch so completed photos can be
+      // reattached when this same form is reopened.
+      await persistDraft();
+      const saved = await Promise.allSettled(files.map((file) => enqueue({
+        clientUploadId: newSubmissionId(), itemId: id, projectId, projectDayId, ownerId, draftId, source,
+        filename: file.name || "photo.jpg", blob: file,
+      })));
+      await syncUploads();
+      const failures = saved.filter((result) => result.status === "rejected");
+      if (failures.length) setUnsavedUploads((count) => count + failures.length);
+    } catch (error) {
+      setUnsavedUploads((count) => count + files.length);
+      setError(error instanceof Error ? error.message : "Foto belum tersimpan. Pilih ulang dan coba lagi.");
     } finally {
-      if (id) patch((a) => ({ uploading: Math.max(0, a.uploading - 1) }));
+      activeUploads.current -= 1;
+      setUploadBatches((count) => count - 1);
+      adjustItemUploads(-files.length);
     }
-  };
+  }
+
+  async function resolvePhotoProblems(ids: string[], retry: boolean) {
+    setUploadBatches((count) => count + 1);
+    activeUploads.current += 1;
+    setError(null);
+    try {
+      await Promise.all(ids.map((id) => retry
+        ? updateJob(id, { attempts: 0, status: "pending", lastError: null, nextAttemptAt: Date.now() })
+        : removeJob(id)));
+      if (!retry) setUnsavedUploads(0);
+      await syncUploads();
+    } catch {
+      setError("Antrean foto belum bisa diperbarui. Coba lagi.");
+    } finally {
+      activeUploads.current -= 1;
+      setUploadBatches((count) => count - 1);
+    }
+  }
 
   const answeredCount = items.filter((i) => answers[i.id]?.result).length;
   const progress = items.length === 0 ? 100 : Math.round((answeredCount / items.length) * 100);
 
   const onSubmit = async (formData: FormData) => {
+    if (!hydrated || !queueReady || activeUploads.current > 0 || queuedUploads > 0 ||
+        failedUploads.ids.length > 0 || unsavedUploads > 0) {
+      setError("Tunggu sampai foto selesai diunggah sebelum mengirim laporan.");
+      return;
+    }
     setError(null);
     setPending(true);
+    formData.set("formUserId", ownerId);
     formData.set("checklistVersion", checklistVersion);
     formData.set("clientSubmissionId", submissionIdRef.current);
     try {
@@ -300,6 +338,10 @@ export function ReportForm({
       // Keep autosave paused after success so a late timer cannot resurrect a
       // submitted draft and reuse its idempotency key for the next report.
       await clearDraft(key);
+      const submittedDraft = submissionIdRef.current;
+      void listJobs().then((jobs) => Promise.all(jobs
+        .filter((job) => job.ownerId === ownerId && job.draftId === submittedDraft && job.projectId === projectId && job.projectDayId === projectDayId)
+        .map((job) => removeJob(job.id)))).catch(() => {});
       if (res.redirectTo) window.location.href = res.redirectTo;
       else setPending(false);
     } catch { setPending(false); setError("Laporan belum dapat disimpan. Coba lagi."); }
@@ -563,7 +605,12 @@ export function ReportForm({
                       </div>
                     ) : null}
 
-                    {item.requiresPhoto || a?.result === "not_ok" ? (
+                    {!item.requiresPhoto && a?.result && a.result !== "not_ok" &&
+                     !(a.photoIds.length || optionalPhotoItems.includes(item.id)) ? (
+                      <button type="button" className="mt-1 inline-flex min-h-10 items-center text-xs font-medium text-[var(--accent)]"
+                        onClick={() => setOptionalPhotoItems((current) => [...current, item.id])}>+ Tambah foto</button>
+                    ) : null}
+                    {item.requiresPhoto || a?.result === "not_ok" || a?.photoIds.length || optionalPhotoItems.includes(item.id) ? (
                       <div className="mt-2">
                         <p className="text-xs" style={{ color: "var(--muted)" }}>
                           Foto{item.requiresPhoto ? " (wajib)" : ""}
@@ -576,13 +623,14 @@ export function ReportForm({
                             Ambil Foto
                             <input
                               type="file"
+                              disabled={!hydrated || pending}
                               accept="image/*"
                               capture="environment"
                               className="sr-only"
                               aria-label={`Ambil foto untuk ${item.label}`}
                               onChange={(e) => {
                                 const files = Array.from(e.target.files ?? []);
-                                for (const f of files) void uploadPhoto(item.id, f, "camera");
+                                void uploadPhotos(item.id, files, "camera");
                                 e.target.value = "";
                               }}
                             />
@@ -591,16 +639,17 @@ export function ReportForm({
                             className="flex min-h-tap flex-1 cursor-pointer items-center justify-center rounded-lg border text-xs"
                             style={{ borderColor: "var(--border)", color: "var(--fg)" }}
                           >
-                            Dari Galeri
+                            Pilih Foto dari Galeri
                             <input
                               type="file"
+                              disabled={!hydrated || pending}
                               accept="image/*"
                               multiple
                               className="sr-only"
                               aria-label={`Pilih foto galeri untuk ${item.label}`}
                               onChange={(e) => {
                                 const files = Array.from(e.target.files ?? []);
-                                for (const f of files) void uploadPhoto(item.id, f, "gallery");
+                                void uploadPhotos(item.id, files, "gallery");
                                 e.target.value = "";
                               }}
                             />
@@ -677,13 +726,14 @@ export function ReportForm({
             Ambil Foto
             <input
               type="file"
+              disabled={!hydrated || pending}
               accept="image/*"
               capture="environment"
               className="sr-only"
               aria-label="Ambil foto umum"
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
-                for (const f of files) void uploadPhoto(null, f, "camera");
+                void uploadPhotos(null, files, "camera");
                 e.target.value = "";
               }}
             />
@@ -692,21 +742,23 @@ export function ReportForm({
             className="flex min-h-tap flex-1 cursor-pointer items-center justify-center rounded-lg border text-xs"
             style={{ borderColor: "var(--border)", color: "var(--fg)" }}
           >
-            Dari Galeri
+            Pilih Foto dari Galeri
             <input
               type="file"
+              disabled={!hydrated || pending}
               accept="image/*"
               multiple
               className="sr-only"
               aria-label="Pilih foto umum dari galeri"
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
-                for (const f of files) void uploadPhoto(null, f, "gallery");
+                void uploadPhotos(null, files, "gallery");
                 e.target.value = "";
               }}
             />
           </label>
         </div>
+        <p className="mt-2 text-xs text-[var(--muted)]">Pilih beberapa foto dari galeri atau buka lagi untuk menambah foto.</p>
         {generalPhotoIds.map((pid) => (
           <input key={pid} type="hidden" name="generalPhotos" value={pid} />
         ))}
@@ -809,13 +861,24 @@ export function ReportForm({
         </p>
       ) : null}
 
+      {failedUploads.ids.length > 0 || unsavedUploads > 0 ? (
+        <div className="surface-card p-3 text-sm">
+          <p role="alert">{failedUploads.ids.length + unsavedUploads} foto gagal diunggah. {failedUploads.message}{unsavedUploads > 0 ? " Pilih ulang foto yang belum tersimpan." : ""}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {failedUploads.ids.length > 0 ? <button type="button" className="btn-secondary" disabled={uploadBatches > 0}
+              onClick={() => void resolvePhotoProblems(failedUploads.ids, true)}>Coba ulang foto</button> : null}
+            <button type="button" className="btn-secondary" disabled={uploadBatches > 0}
+              onClick={() => void resolvePhotoProblems(failedUploads.ids, false)}>Lewati foto yang gagal</button>
+          </div>
+        </div>
+      ) : null}
       <button
         type="submit"
-        disabled={pending}
+        disabled={!queueReady || pending || uploadBatches > 0 || queuedUploads > 0 || failedUploads.ids.length > 0 || unsavedUploads > 0}
         className="min-h-tap rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
         style={{ background: "var(--accent-solid)" }}
       >
-        {pending ? "Mengirim…" : `Submit ${PHASE_TITLE[phase]}`}
+        {pending ? "Mengirim…" : uploadBatches > 0 || queuedUploads > 0 ? "Menunggu foto…" : `Submit ${PHASE_TITLE[phase]}`}
       </button>
       <p className="text-center text-xs" style={{ color: "var(--muted)" }}>
         Draft tersimpan otomatis di perangkat ini.

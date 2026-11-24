@@ -67,6 +67,7 @@ export default async function EditReportPage({
 
       {canEdit ? (
         <EditReportForm
+          ownerId={session.user.id}
           action={editReportAction}
           reportId={report.id}
           generalPhotos={report.generalPhotos}

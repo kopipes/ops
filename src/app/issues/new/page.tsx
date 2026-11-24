@@ -85,6 +85,7 @@ export default async function NewIssuePage({
     <AppShell contentWidth="form">
       <h1 className="mb-4 text-xl font-semibold">Issue Baru</h1>
       <IssueForm
+        ownerId={session.user.id}
         action={createIssueAction}
         projects={projectRows}
         categories={categories}
