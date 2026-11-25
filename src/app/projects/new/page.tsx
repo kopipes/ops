@@ -38,13 +38,13 @@ export default async function NewProjectPage({
     listDivisionTemplates(db, session.user, true),
   ]);
 
-  const settings = await getGlobalSettings(db);
+  const settings = getGlobalSettings(db);
   const ownerDivisions = divisionRows.filter((division) => isAdmin(session.user) || session.user.divisionIds.includes(division.id));
   const defaultDivisionId = ownerDivisions.find((division) => session.user.divisionIds.includes(division.id))?.id ?? ownerDivisions[0]?.id ?? "";
-  const defaultCode = await generateProjectCode(db, {
+  const defaultCode = settings.projectCodeRequired ? await generateProjectCode(db, {
     divisionCode: divisionRows.find((d) => d.id === defaultDivisionId)?.code ?? "PRJ",
     year: new Date().getFullYear(),
-  });
+  }) : "";
 
   // Candidate projects for "copy from previous project".
   const projectIds = await visibleProjectIds(db, session.user, { includeArchived: true, workspaceOnly: true });
@@ -108,6 +108,7 @@ export default async function NewProjectPage({
         currentUserId={session.user.id}
         defaultDivisionId={defaultDivisionId}
         defaultCode={defaultCode}
+        projectCodeRequired={settings.projectCodeRequired}
         isAdmin={isAdmin(session.user)}
         todayIso={todayIso}
         errorFromQuery={error}

@@ -53,28 +53,23 @@ export type Severity = "low" | "medium" | "high" | "critical";
 // Code generation (§9.5 no.8): EVT-2026-0012-I-007
 // ---------------------------------------------------------------------------
 
-/**
- * Per-project, per-year running number. Derived from the project code so an
- * issue can be quoted in a WhatsApp group without ambiguity.
- */
-export async function generateIssueCode(db: DB, projectId: string): Promise<string> {
-  const project = await db
+/** Uses the project number when present, otherwise the shared issue sequence. */
+export function generateIssueCode(db: DB, projectId: string): string {
+  const project = db
     .select({ code: projects.code })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .get();
   if (!project) throw new ValidationError("Project tidak ditemukan");
 
-  const prefix = `${project.code}-I-`;
-  const rows = await db
-    .select({ code: issues.code })
-    .from(issues)
-    .where(sql`${issues.code} LIKE ${`${prefix}%`}`);
+  const prefix = project.code ? `${project.code}-I-` : "ISS-";
+  const rows = db.select({ code: issues.code }).from(issues)
+    .where(sql`${issues.code} LIKE ${`${prefix}%`}`).all();
 
   let max = 0;
-  for (const r of rows) {
-    const n = Number.parseInt(r.code.slice(prefix.length), 10);
-    if (Number.isFinite(n) && n > max) max = n;
+  for (const row of rows) {
+    const suffix = row.code.slice(prefix.length);
+    if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
   }
   return `${prefix}${String(max + 1).padStart(3, "0")}`;
 }
@@ -206,58 +201,59 @@ export async function createIssue(
   if (!category) throw new ValidationError("Kategori issue tidak ditemukan");
 
   const identity = await snapshotIdentity(db, user.id);
-  const code = await generateIssueCode(db, input.projectId);
   const issueId = randomUUID();
   const now = Date.now();
 
-  db.transaction(tx=>{
-  tx.insert(issues).values({
-    id: issueId,
-    code,
-    projectId: input.projectId,
-    projectDayId: input.projectDayId,
-    phase: input.phase ?? null,
-    reportId: input.reportId ?? null,
-    checkResultId: input.checkResultId ?? null,
-    title: input.title,
-    description: input.description ?? null,
-    categoryId: input.categoryId,
-    severity: input.severity,
-    status: "open",
-    nextStep: input.nextStep,
-    picUserId: input.picUserId,
-    picExternal: input.picExternal ?? null,
-    dueAt: input.dueAt ?? null,
-    createdBy: user.id,
-    authorName: identity.name,
-    authorRole: identity.role,
-    authorDivision: identity.division,
-    createdAt: now,
-    updatedAt: now,
-  }).run();
+  const code = db.transaction((tx) => {
+    const code = generateIssueCode(tx, input.projectId);
+    tx.insert(issues).values({
+      id: issueId,
+      code,
+      projectId: input.projectId,
+      projectDayId: input.projectDayId,
+      phase: input.phase ?? null,
+      reportId: input.reportId ?? null,
+      checkResultId: input.checkResultId ?? null,
+      title: input.title,
+      description: input.description ?? null,
+      categoryId: input.categoryId,
+      severity: input.severity,
+      status: "open",
+      nextStep: input.nextStep,
+      picUserId: input.picUserId,
+      picExternal: input.picExternal ?? null,
+      dueAt: input.dueAt ?? null,
+      createdBy: user.id,
+      authorName: identity.name,
+      authorRole: identity.role,
+      authorDivision: identity.division,
+      createdAt: now,
+      updatedAt: now,
+    }).run();
 
-  // First timeline entry: "created".
-  tx.insert(issueUpdates).values({
-    id: randomUUID(),
-    issueId,
-    userId: user.id,
-    authorName: identity.name,
-    authorRole: identity.role,
-    authorDivision: identity.division,
-    action: "created",
-    note: null,
-    statusFrom: null,
-    statusTo: "open",
-    changesJson: JSON.stringify({
-      severity: [null, input.severity],
-      ...(input.picUserId ? { pic_user_id: [null, input.picUserId] } : {}),
-      ...(input.picExternal ? { pic_external: [null, input.picExternal] } : {}),
-    } satisfies ChangesJson),
-    createdAt: now,
-  }).run();
+    // First timeline entry: "created".
+    tx.insert(issueUpdates).values({
+      id: randomUUID(),
+      issueId,
+      userId: user.id,
+      authorName: identity.name,
+      authorRole: identity.role,
+      authorDivision: identity.division,
+      action: "created",
+      note: null,
+      statusFrom: null,
+      statusTo: "open",
+      changesJson: JSON.stringify({
+        severity: [null, input.severity],
+        ...(input.picUserId ? { pic_user_id: [null, input.picUserId] } : {}),
+        ...(input.picExternal ? { pic_external: [null, input.picExternal] } : {}),
+      } satisfies ChangesJson),
+      createdAt: now,
+    }).run();
 
-  claimIssuePhotos(tx,user,input.photoIds,input.projectId,"issue",issueId);
-  });
+    claimIssuePhotos(tx,user,input.photoIds,input.projectId,"issue",issueId);
+    return code;
+  }, { behavior: "immediate" });
 
   return { issueId, code };
 }

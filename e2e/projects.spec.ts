@@ -77,6 +77,57 @@ test("manager can create a project through the wizard", async ({ page }) => {
   await expect(tabs.getByRole("link", { name: "Hari ini" })).toBeVisible();
 });
 
+test("Admin can require project numbers while existing unnumbered projects stay editable", async ({ browser, page }) => {
+  test.setTimeout(90000);
+  await login(page, "manager@ops.test");
+  const name = `Tanpa nomor ${Date.now()}`;
+  const url = await createProjectViaWizard(page, { name, code: "", template: false });
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+
+  const adminContext = await browser.newContext();
+  try {
+    const admin = await adminContext.newPage();
+    await login(admin, "admin@ops.test");
+    await admin.goto(`${BASE}/admin/settings`);
+    const setting = admin.getByLabel("Wajibkan nomor project");
+    await expect(setting).not.toBeChecked();
+    await page.goto(`${BASE}/projects/new`);
+    await waitForHydration(page, 'ol[aria-label="Langkah wizard"]');
+    const number = page.getByLabel("Kode project", { exact: true });
+    await expect(number).toHaveValue("");
+    await expect(number).not.toHaveAttribute("required");
+    await page.getByLabel("Nama project", { exact: true }).fill("Form yang sudah terbuka");
+    await page.getByLabel("Venue", { exact: true }).fill("Lokasi uji");
+
+    await setting.check();
+    await admin.getByRole("button", { name: "Simpan setelan" }).click();
+    await expect(admin.getByText("Setelan tersimpan.", { exact: true })).toBeVisible();
+
+    for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Lanjut →" }).click();
+    await page.getByRole("button", { name: "Simpan project", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Nomor project wajib diisi." })).toBeVisible();
+    await page.goto(`${BASE}/projects/new`);
+    await expect(number).toHaveAttribute("required", "");
+    await expect(number).toHaveValue(/^EVT-/);
+    await number.clear();
+    await page.getByRole("button", { name: "Lanjut →" }).click();
+    await expect(number).toBeVisible();
+
+    await page.goto(`${url}?tab=settings&edit=1`);
+    await expect(page.getByLabel("Nomor project", { exact: true })).toHaveValue("");
+    await page.getByLabel("Venue", { exact: true }).fill("Venue diperbarui");
+    await page.getByRole("button", { name: "Simpan perubahan" }).click();
+    await expect(page.getByText("Venue diperbarui", { exact: true }).first()).toBeVisible();
+    await admin.goto(`${BASE}/admin/settings`);
+    await expect(setting).toBeChecked();
+    await setting.uncheck();
+    await admin.getByRole("button", { name: "Simpan setelan" }).click();
+    await expect(admin.getByText("Setelan tersimpan.", { exact: true })).toBeVisible();
+  } finally {
+    await adminContext.close();
+  }
+});
+
 for (const width of [390, 1440]) {
   test(`wizard shows only the current step at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });

@@ -55,7 +55,8 @@ export function ProjectDetailsForm({ projectId, updatedAt, datesLocked, canChang
               onChange={(event) => setDetails({ ...details, [name]: event.target.value })}
               maxLength={max}
               minLength={"min" in options ? options.min : undefined}
-              required={"min" in options}
+              required={name !== "code" && "min" in options}
+              placeholder={name === "code" ? "Opsional" : undefined}
               pattern={name === "code" ? "[A-Za-z0-9\\-]+" : undefined}
             />
           </label>

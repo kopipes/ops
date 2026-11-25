@@ -18,6 +18,7 @@ import {
   updateProject,
   updateProjectDay,
 } from "./projects";
+import { DEFAULT_SETTINGS, saveGlobalSettings } from "./app-settings";
 import {
   buildChecklistFromProject,
   buildChecklistFromTemplates,
@@ -342,6 +343,24 @@ describe("createProject", () => {
     const { projectId } = await createProject(db, admin, projectInput({ code: "evt-2026-0009" }));
     const p = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
     expect(p?.code).toBe("EVT-2026-0009");
+  });
+
+  it("allows multiple blank numbers and respects the latest Admin setting on create", async () => {
+    const blank = projectInput({ code: "" });
+    const first = await createProject(db, admin, blank);
+    const second = await createProject(db, admin, { ...blank, name: "Project tanpa nomor lainnya" });
+    expect(first.projectId).not.toBe(second.projectId);
+
+    await saveGlobalSettings(db, admin, { ...DEFAULT_SETTINGS, projectCodeRequired: true });
+    await expect(createProject(db, admin, blank)).rejects.toThrow("Nomor project wajib diisi");
+    const numbered = await createProject(db, admin, projectInput({ code: "evt-123" }));
+    const rows = db.select({ id: schema.projects.id, code: schema.projects.code }).from(schema.projects).all();
+    expect(rows.filter((row) => row.code === "")).toHaveLength(2);
+    expect(rows.find((row) => row.id === numbered.projectId)?.code).toBe("EVT-123");
+
+    await expect(softDeleteProject(db, admin, first.projectId, "Project duplikat", "kode-salah")).rejects.toThrow("Nama konfirmasi");
+    await softDeleteProject(db, admin, first.projectId, "Project duplikat", blank.name);
+    expect(db.select().from(schema.projects).where(eq(schema.projects.id, first.projectId)).get()?.deletedAt).not.toBeNull();
   });
 
   it("rejects a duplicate code", async () => {

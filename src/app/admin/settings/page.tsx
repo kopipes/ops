@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/AppShell";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { requireUser } from "@/server/auth/current-user";
+import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import { getDb } from "@/server/db";
 import { getGlobalSettings } from "@/server/services/app-settings";
 import { isAdmin } from "@/server/permissions";
@@ -10,7 +10,7 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 export const metadata = { title: "Admin — Setelan" };
 
 export default async function AdminSettingsPage() {
-  const session = await requireUser();
+  const session = await requireUserWithoutPasswordChange();
 
   if (!isAdmin(session.user)) {
     return (
@@ -26,7 +26,7 @@ export default async function AdminSettingsPage() {
     );
   }
 
-  const settings = await getGlobalSettings(getDb());
+  const settings = getGlobalSettings(getDb());
 
   return (
     <AppShell contentWidth="form">

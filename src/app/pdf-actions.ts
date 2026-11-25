@@ -66,7 +66,7 @@ export async function exportDailyPdfAction(
 
   try {
     const pdf = await renderPdfWithCookie(url, cookie);
-    const filename = `laporan-${project.code}-${day.date}.pdf`;
+    const filename = `laporan-${project.code || project.id.slice(0, 8)}-${day.date}.pdf`;
     return {
       ok: true,
       filename,
@@ -121,7 +121,7 @@ export async function exportProjectPdfAction(
     const pdf = await renderPdfWithCookie(url, cookie);
     return {
       ok: true,
-      filename: `rekap-${project.code}-${from}_${to}.pdf`,
+      filename: `rekap-${project.code || project.id.slice(0, 8)}-${from}_${to}.pdf`,
       dataUrl: `data:application/pdf;base64,${pdf.toString("base64")}`,
     };
   } catch (err) {

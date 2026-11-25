@@ -41,8 +41,8 @@ export function DeleteProjectButton({ projectId, projectName, projectCode }: {
         <label htmlFor={reason} className="flex flex-col gap-2 text-xs font-medium">Alasan penghapusan
           <textarea id={reason} name="reason" required minLength={3} maxLength={1000} rows={3} disabled={pending} className="rounded-xl border bg-[var(--bg)] p-3 text-base sm:text-sm" style={{ borderColor: "var(--border)" }} />
         </label>
-        <label htmlFor={code} className="flex flex-col gap-2 text-xs font-medium"><span>Ketik kode <strong className="break-all">{projectCode}</strong> untuk konfirmasi</span>
-          <input id={code} name="confirmationCode" required maxLength={80} autoComplete="off" spellCheck={false} disabled={pending} className="min-h-tap rounded-xl border bg-[var(--bg)] px-3 text-base sm:text-sm" style={{ borderColor: "var(--border)" }} />
+        <label htmlFor={code} className="flex flex-col gap-2 text-xs font-medium"><span>Ketik {projectCode ? "kode" : "nama"} <strong className="break-all">{projectCode || projectName}</strong> untuk konfirmasi</span>
+          <input id={code} name="confirmationCode" required maxLength={120} autoComplete="off" spellCheck={false} disabled={pending} className="min-h-tap rounded-xl border bg-[var(--bg)] px-3 text-base sm:text-sm" style={{ borderColor: "var(--border)" }} />
         </label>
         {error ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         <div className="mt-1 flex flex-wrap justify-end gap-2">

@@ -14,6 +14,7 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { getGlobalSettings } from "./app-settings";
 import { recordTemplateUsage } from "./templates";
 import { readProjectTemplate } from "./division-templates";
 import type { SnapshotRow } from "./project-checklist";
@@ -227,6 +228,9 @@ export async function createProject(
     if (!isAdmin(user) && !user.divisionIds.includes(input.ownerDivisionId)) {
       throw new ForbiddenError("Kamu hanya bisa membuat project untuk divisimu");
     }
+    if (!input.code && getGlobalSettings(tx).projectCodeRequired) {
+      throw new ValidationError("Nomor project wajib diisi.");
+    }
     assertProjectCodeAvailable(tx, input.code);
 
     const templateIds = input.checklistSource === "template" ? input.templateIds : [];
@@ -331,6 +335,7 @@ export async function createProject(
 }
 
 function assertProjectCodeAvailable(db: DB, code: string, excludeProjectId?: string) {
+  if (!code) return;
   const existing = db.select({ id: projects.id }).from(projects).where(and(
     eq(projects.code, code.toUpperCase()), isNull(projects.deletedAt),
     excludeProjectId ? ne(projects.id, excludeProjectId) : undefined,
@@ -559,7 +564,11 @@ export async function softDeleteProject(
     if (!current) throw new ValidationError("Project tidak ditemukan atau sudah dihapus");
     const access = currentProjectAccess(tx, user, current.id);
     if (!canDeleteProject(access.user)) throw new ForbiddenError("Hanya Admin yang bisa menghapus project");
-    if (parsed.data.confirmationCode !== current.code) throw new ValidationError("Kode konfirmasi tidak sesuai dengan kode project");
+    if (parsed.data.confirmationCode !== (current.code || current.name)) {
+      throw new ValidationError(current.code
+        ? "Kode konfirmasi tidak sesuai dengan kode project"
+        : "Nama konfirmasi tidak sesuai dengan nama project");
+    }
     const now = Date.now();
     tx.update(projects).set({ deletedAt: now, updatedAt: now }).where(eq(projects.id, current.id)).run();
     tx.insert(auditLogs).values({

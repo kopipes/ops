@@ -78,7 +78,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   <span className="status-dot" />{STATUS_LABEL[p.status] ?? p.status}
                 </span>
               </div>
-              <p className="mt-5 text-[10px] font-medium tracking-wide text-[var(--muted)]">{p.code}</p>
+              {p.code ? <p className="mt-5 text-[10px] font-medium tracking-wide text-[var(--muted)]">{p.code}</p> : null}
               <h3 className="mt-1 text-[17px] font-semibold leading-6 tracking-tight">{p.name}</h3>
               {p.client ? <p className="mt-1 text-xs text-[var(--muted)]">{p.client}</p> : null}
               <p className="mt-4 flex items-center gap-2 text-xs text-[var(--muted)]"><Icon name="pin" size={14} />{p.venue}</p>

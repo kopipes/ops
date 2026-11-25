@@ -204,7 +204,7 @@ export const projects = sqliteTable("projects", {
   createdAt,
   updatedAt,
 }, (t) => ({
-  codeUx: uniqueIndex("projects_code_ux").on(t.code).where(sql`${t.deletedAt} is null`),
+  codeUx: uniqueIndex("projects_code_ux").on(t.code).where(sql`${t.deletedAt} is null and ${t.code} <> ''`),
   statusIx: index("projects_status_ix").on(t.status),
   ownerDivisionIx: index("projects_owner_division_ix").on(t.ownerDivisionId),
 }));

@@ -170,12 +170,10 @@ export const dayTypeSchema = z.enum(["loading_in", "event", "loading_out"]);
 export type DayType = z.infer<typeof dayTypeSchema>;
 
 const projectFieldsSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(3, "Kode project minimal 3 karakter")
-    .max(40, "Kode project maksimal 40 karakter")
-    .regex(/^[A-Za-z0-9-]+$/, "Kode hanya boleh huruf, angka, dan tanda hubung"),
+  code: z.string().trim().max(40, "Kode project maksimal 40 karakter")
+    .refine((code) => !code || code.length >= 3, "Kode project minimal 3 karakter")
+    .refine((code) => !code || /^[A-Za-z0-9-]+$/.test(code), "Kode hanya boleh huruf, angka, dan tanda hubung")
+    .default(""),
   name: trimmed(3, 120, "Nama project 3–120 karakter"),
   client: z
     .string()
@@ -294,7 +292,7 @@ const projectStatusSchema = z.enum(["draft", "active", "completed", "archived"])
 
 export const deleteProjectSchema = z.object({
   projectId: trimmed(1, 100, "Project tidak valid"),
-  confirmationCode: trimmed(1, 80, "Ketik kode project untuk konfirmasi"),
+  confirmationCode: trimmed(1, 120, "Ketik kode atau nama project untuk konfirmasi"),
   reason: trimmed(3, 1000, "Alasan penghapusan harus 3–1000 karakter"),
 });
 

@@ -89,7 +89,7 @@ export default async function ProjectDetailPage({
     return (
       <AppShell contentWidth="form">
         <h1>{project.name}</h1>
-        <p className="mb-4 text-sm text-[var(--muted)]">{project.code} · Admin Project (akses laporan)</p>
+        <p className="mb-4 text-sm text-[var(--muted)]">{project.code ? `${project.code} · ` : ""}Admin Project (akses laporan)</p>
         <Link className="btn-primary mb-4" href={`/reports?${reportFilters}`}>Lihat laporan harian</Link>
         <section className="surface-card p-4">
           <h2 className="section-title mb-3">Rekap project</h2>
@@ -159,7 +159,7 @@ export default async function ProjectDetailPage({
           <div className="min-w-0">
             <h1 className="text-xl font-semibold">{project.name}</h1>
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              {project.code} · {project.venue}
+              {project.code ? `${project.code} · ` : ""}{project.venue}
               {project.client ? ` · ${project.client}` : ""}
             </p>
             <p className="text-xs" style={{ color: "var(--muted)" }}>
@@ -604,7 +604,7 @@ export default async function ProjectDetailPage({
             style={{ borderColor: "var(--border)", background: "var(--surface)" }}
           >
             {[
-              ["Nomor project", project.code],
+              ["Nomor project", project.code || "—"],
               ["Klien", project.client ?? "—"],
               ["Venue", project.venue],
               ["Alamat", project.address ?? "—"],

@@ -102,7 +102,7 @@ export async function deleteProjectAction(
 
 function projectDetailsFromForm(formData: FormData) {
   return {
-    code: formData.get("code"),
+    code: formData.get("code") ?? "",
     name: formData.get("name"),
     client: formData.get("client") ?? "",
     venue: formData.get("venue"),

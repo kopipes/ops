@@ -53,6 +53,7 @@ interface Props {
   currentUserId: string;
   defaultDivisionId: string;
   defaultCode: string;
+  projectCodeRequired: boolean;
   isAdmin: boolean;
   todayIso: string;
   errorFromQuery?: string;
@@ -95,6 +96,7 @@ export function ProjectWizard({
   currentUserId,
   defaultDivisionId,
   defaultCode,
+  projectCodeRequired,
   todayIso,
   errorFromQuery,
   defaults,
@@ -111,6 +113,7 @@ export function ProjectWizard({
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [checklistError, setChecklistError] = useState("");
   const checklistRequest = useRef(0);
+  const codeInput = useRef<HTMLInputElement>(null);
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [removed, setRemoved] = useState<string[]>([]);
   const [customRows, setCustomRows] = useState<ChecklistRow[]>([]);
@@ -239,15 +242,20 @@ export function ProjectWizard({
         <div className="flex flex-col gap-1">
           <Label htmlFor="code">Kode project</Label>
           <input
+            ref={codeInput}
             id="code"
             name="code"
-            required
+            required={projectCodeRequired}
+            minLength={3}
+            maxLength={40}
+            pattern={"[A-Za-z0-9\\-]+"}
+            aria-describedby="project-code-hint"
             defaultValue={defaultCode}
             className={inputCls}
             style={inputStyle}
           />
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Saran otomatis (mis. EVT-2026-0012), bisa diubah.
+          <p id="project-code-hint" className="text-xs" style={{ color: "var(--muted)" }}>
+            {projectCodeRequired ? "Wajib. Nomor yang disarankan bisa diubah." : "Opsional. Bisa diisi nanti dari detail project."}
           </p>
         </div>
 
@@ -424,7 +432,7 @@ export function ProjectWizard({
             <option value="">Pilih project…</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.code} — {p.name}
+                {p.code ? `${p.code} — ` : ""}{p.name}
               </option>
             ))}
           </select>
@@ -692,7 +700,10 @@ export function ProjectWizard({
         {step < STEPS.length - 1 ? (
           <button
             type="button"
-            onClick={() => canNext && setStep((s) => s + 1)}
+            onClick={() => {
+              if (step === 0 && codeInput.current?.reportValidity() === false) return;
+              if (canNext) setStep((s) => s + 1);
+            }}
             disabled={!canNext}
             className="min-h-tap flex-1 rounded-lg px-4 py-3 text-base font-medium text-white disabled:opacity-60"
             style={{ background: "var(--accent-solid)" }}

@@ -19,6 +19,7 @@ export function SettingsForm({
   initial: GlobalSettings;
 }) {
   const [state, formAction, pending] = useActionState(action, {} as SettingsActionState);
+  const [projectCodeRequired, setProjectCodeRequired] = useState(initial.projectCodeRequired);
   const [openingEnabled, setOpeningEnabled] = useState(initial.openingWindowEnabled);
   const [closingEnabled, setClosingEnabled] = useState(initial.closingWindowEnabled);
 
@@ -30,6 +31,15 @@ export function SettingsForm({
       const formData = new FormData(event.currentTarget);
       startTransition(() => formAction(formData));
     }} className="flex flex-col gap-3">
+      <div className="border-b border-[var(--border)] pb-3">
+        <label className="flex min-h-tap items-center gap-3 text-sm">
+          <input type="checkbox" name="projectCodeRequired" checked={projectCodeRequired}
+            onChange={(event) => setProjectCodeRequired(event.target.checked)} className="h-5 w-5" />
+          Wajibkan nomor project
+        </label>
+        <p className="text-xs text-[var(--muted)]">Berlaku saat membuat project baru.</p>
+      </div>
+
       <label className="flex min-h-tap items-center gap-3 text-sm">
         <input type="checkbox" name="openingWindowEnabled" checked={openingEnabled} onChange={e => setOpeningEnabled(e.target.checked)} className="h-5 w-5" />
         Gunakan window opening

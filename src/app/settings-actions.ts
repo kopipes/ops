@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/server/db";
-import { requireUser } from "@/server/auth/current-user";
+import { requireUserWithoutPasswordChange } from "@/server/auth/current-user";
 import { saveGlobalSettings } from "@/server/services/app-settings";
 import { ForbiddenError, ValidationError } from "@/server/services/checklist-items";
 
@@ -15,10 +15,11 @@ export async function saveSettingsAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireUser();
+  const session = await requireUserWithoutPasswordChange();
 
   try {
     await saveGlobalSettings(getDb(), session.user, {
+      projectCodeRequired: formData.get("projectCodeRequired") === "on",
       openingWindowEnabled: formData.get("openingWindowEnabled") === "on",
       closingWindowEnabled: formData.get("closingWindowEnabled") === "on",
       defaultOpeningWindowStart: String(formData.get("defaultOpeningWindowStart") ?? ""),

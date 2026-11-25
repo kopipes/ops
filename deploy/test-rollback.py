@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 
-def exercise(reject_target, interrupt_stop=False, report_only=False, division_templates=False):
+def exercise(reject_target, interrupt_stop=False, report_only=False, division_templates=False, blank_project=False):
     with tempfile.TemporaryDirectory(prefix="ops-rollback-test-") as directory:
         root = Path(directory)
         source = Path(__file__).with_name("rollback.sh").read_text()
@@ -39,6 +39,9 @@ def exercise(reject_target, interrupt_stop=False, report_only=False, division_te
                 connection.execute("CREATE TABLE state(value TEXT)")
                 connection.execute("INSERT INTO state VALUES(?)", (value,))
                 connection.execute("CREATE TABLE project_members(role_in_project TEXT, is_active INTEGER)")
+                connection.execute("CREATE TABLE projects(code TEXT, deleted_at INTEGER)")
+                if blank_project:
+                    connection.execute("INSERT INTO projects VALUES('', NULL)")
                 if division_templates and database == live:
                     connection.execute("CREATE TABLE division_checklist_templates(id TEXT)")
                 if report_only:
@@ -84,7 +87,9 @@ printf '%s\\n' '{{"ok":true}}'
             assert "stop ops.service" not in (root / "service-calls.txt").read_text()
             print("PASS: blocks old template writer before stopping Ops")
             return
-        failed = reject_target or interrupt_stop or report_only
+        failed = reject_target or interrupt_stop or report_only or blank_project
+        if blank_project:
+            assert "does not support active projects without numbers" in result.stderr
         if report_only:
             assert "does not support active Admin Project" in result.stderr
         expected_sha = previous if failed else target
@@ -111,3 +116,5 @@ exercise(False, True)
 exercise(False, report_only=True)
 
 exercise(False, division_templates=True)
+
+exercise(False, blank_project=True)

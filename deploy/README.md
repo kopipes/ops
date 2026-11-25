@@ -106,7 +106,8 @@ active Admin Project memberships. Run the rollback script from the current
 release so it can check the target and the database before starting older code.
 For databases with migration 0010 applied, choose a target that supports division
 templates. Earlier releases require an explicit matching pre-migration snapshot
-because their template writes would land in the legacy tables.
+because their template writes would land in the legacy tables. Releases that
+predate migration 0011 require numbers on all active projects.
 
 The script backs up the current DB first. It stops/restarts only Ops; it does not
 restart databases, change shared ports, or restore whole-host config snapshots.

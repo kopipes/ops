@@ -68,7 +68,7 @@ export default async function PrintDayPage({
               {detail.project.venue}
             </div>
             <div className="meta">
-              Tanggal: {detail.day.date} · Kode: {detail.project.code}
+              Tanggal: {detail.day.date}{detail.project.code ? ` · Kode: ${detail.project.code}` : ""}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>

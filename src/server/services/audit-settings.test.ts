@@ -103,6 +103,7 @@ describe("global settings (§12 /admin/settings)", () => {
   it("persists and reloads values", async () => {
     await saveGlobalSettings(db, admin, {
       ...DEFAULT_SETTINGS,
+      projectCodeRequired: true,
       openingWindowEnabled: true,
       defaultOpeningWindowStart: "05:30",
       defaultOpeningWindowEnd: "10:00",
@@ -110,6 +111,7 @@ describe("global settings (§12 /admin/settings)", () => {
     });
 
     const loaded = await getGlobalSettings(db);
+    expect(loaded.projectCodeRequired).toBe(true);
     expect(loaded.defaultOpeningWindowStart).toBe("05:30");
     expect(loaded.defaultOpeningWindowEnd).toBe("10:00");
     expect(loaded.defaultTimezone).toBe("Asia/Makassar");

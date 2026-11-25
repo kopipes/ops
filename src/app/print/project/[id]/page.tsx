@@ -87,7 +87,7 @@ export default async function PrintRecapPage({
               {project.venue}
             </div>
             <div className="meta">
-              Rekap {from} s/d {to} · Kode: {project.code}
+              Rekap {from} s/d {to}{project.code ? ` · Kode: ${project.code}` : ""}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>

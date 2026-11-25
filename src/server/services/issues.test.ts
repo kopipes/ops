@@ -152,6 +152,15 @@ describe("issue code (§9.5 no.8)", () => {
     const { code } = await createIssue(db, crew, issueInput());
     expect(code).toBe("EVT-2026-0012-I-001");
   });
+  it("allocates an independent issue sequence for projects without numbers", async () => {
+    db.update(schema.projects).set({ code: "ISS-2040" }).where(eq(schema.projects.id, projectId)).run();
+    expect((await createIssue(db, crew, issueInput())).code).toBe("ISS-2040-I-001");
+    db.update(schema.projects).set({ code: "" }).where(eq(schema.projects.id, projectId)).run();
+    await seedPhoto("ph-2", "u-crew");
+    expect((await createIssue(db, crew, issueInput({ photoIds: ["ph-2"] }))).code).toBe("ISS-001");
+    expect(generateIssueCode(db, projectId)).toBe("ISS-002");
+  });
+
 });
 
 describe("createIssue (§4.7)", () => {

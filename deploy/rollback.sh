@@ -111,6 +111,13 @@ if [[ ! -f $target/src/lib/project-roles.ts ]]; then
     recover 1
   fi
 fi
+if [[ ! -f $target/src/server/db/migrations/0011_optional_project_code.sql ]]; then
+  project_db=${snapshot:-$backup/ops.db}
+  if [[ $(sqlite3 "$project_db" "SELECT EXISTS(SELECT 1 FROM projects WHERE code='' AND deleted_at IS NULL);") != 0 ]]; then
+    echo "Target release does not support active projects without numbers." >&2
+    recover 1
+  fi
+fi
 if [[ -n $snapshot ]]; then
   replaced_db=1
   restore_db "$snapshot"

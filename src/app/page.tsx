@@ -169,7 +169,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 key={c.project.id}
                 className="project-card flex flex-col"
               >
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] font-medium tracking-wide text-[var(--muted)]">{c.project.code}</span><span className={`status-badge ${c.opening && c.closing ? "tone-success" : c.opening || c.closing || c.monitoring ? "tone-accent" : "tone-neutral"}`}><span className="status-dot" />{c.opening && c.closing ? "Laporan terisi" : c.opening || c.closing || c.monitoring ? "Sebagian terisi" : "Belum diisi"}</span></div>
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-2">{c.project.code ? <span className="text-[10px] font-medium tracking-wide text-[var(--muted)]">{c.project.code}</span> : null}<span className={`status-badge ${c.opening && c.closing ? "tone-success" : c.opening || c.closing || c.monitoring ? "tone-accent" : "tone-neutral"}`}><span className="status-dot" />{c.opening && c.closing ? "Laporan terisi" : c.opening || c.closing || c.monitoring ? "Sebagian terisi" : "Belum diisi"}</span></div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="text-[17px] font-semibold leading-6 tracking-tight">{c.project.name}</h3>

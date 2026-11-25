@@ -149,7 +149,7 @@ export function IssueForm({
           >
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.code} — {p.name}
+                {p.code ? `${p.code} — ` : ""}{p.name}
               </option>
             ))}
           </select>
