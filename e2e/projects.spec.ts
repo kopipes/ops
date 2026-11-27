@@ -3,7 +3,8 @@
  * Requires the seed (pnpm db:seed).
  */
 import { expect, test, type Page } from "@playwright/test";
-import { waitForHydration } from "./helpers";
+import { addDays } from "../src/lib/datetime";
+import { today, waitForHydration } from "./helpers";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3113";
 const PASSWORD = "OpsDemo2026!";
@@ -31,7 +32,7 @@ async function login(page: Page, email: string) {
 /** Walks the wizard end to end. Returns the created project's URL. */
 async function createProjectViaWizard(
   page: Page,
-  opts: { name: string; code: string; template?: boolean },
+  opts: { name: string; code: string; template?: boolean; pastDay?: string },
 ) {
   await page.goto(`${BASE}/projects/new`);
 
@@ -40,6 +41,10 @@ async function createProjectViaWizard(
   await page.getByLabel("Nama project").fill(opts.name);
   await page.getByLabel("Venue").fill("JCC Senayan");
   await page.getByLabel("Klien (opsional)").fill("PT Klien");
+  if (opts.pastDay) {
+    await page.getByLabel("Tanggal mulai").fill(opts.pastDay);
+    await page.getByLabel("Tanggal selesai").fill(opts.pastDay);
+  }
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // Step 2: divisions (owner preselected)
@@ -56,9 +61,15 @@ async function createProjectViaWizard(
   // Step 4: members — add the crew user
   const crewRow = page.locator("section:not([hidden]) li", { hasText: "crew@ops.test" }).first();
   await crewRow.locator('input[type="checkbox"]').check();
+  if (opts.pastDay) {
+    const headRow = page.locator("section:not([hidden]) li", { hasText: "multi@ops.test" });
+    await headRow.getByRole("checkbox").check();
+    await headRow.getByRole("combobox").selectOption("lead");
+  }
   await page.getByRole("button", { name: "Lanjut →" }).click();
 
   // Step 5: save
+  if (opts.pastDay) await page.getByLabel(/Simpan sebagai draft/).check();
   await page.getByRole("button", { name: "Simpan project" }).click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}/);
   return page.url();
@@ -75,6 +86,65 @@ test("manager can create a project through the wizard", async ({ page }) => {
   const tabs = page.getByRole("navigation", { name: "Tab project" });
   await expect(tabs).toBeVisible();
   await expect(tabs.getByRole("link", { name: "Hari ini" })).toBeVisible();
+});
+
+test("Head Crew and Crew can submit for a past day from the Hari tab of a draft project", async ({ browser, page }) => {
+  test.setTimeout(90000);
+  await login(page, "manager@ops.test");
+  const date = addDays(today(), -1);
+  const name = `Laporan susulan ${Date.now()}`;
+  const project = await createProjectViaWizard(page, { name, code: uniqueCode(), template: false, pastDay: date });
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+
+  const leadContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const crewContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const lead = await leadContext.newPage();
+    const crew = await crewContext.newPage();
+    await login(lead, "multi@ops.test");
+    await login(crew, "crew@ops.test");
+    await lead.goto(project);
+    await crew.goto(project);
+    await lead.getByRole("link", { name: "Hari", exact: true }).click();
+    await crew.getByRole("link", { name: "Hari", exact: true }).click();
+    const leadDay = lead.getByRole("listitem").filter({ hasText: date });
+    const crewDay = crew.getByRole("listitem").filter({ hasText: date });
+    await expect(leadDay.getByRole("link", { name: /^Isi / })).toHaveCount(3);
+    await expect(crewDay.getByRole("link", { name: /^Isi / })).toHaveCount(1);
+    await expect(crewDay.getByRole("link", { name: "Isi Monitoring" })).toBeVisible();
+
+    await leadDay.getByRole("link", { name: "Isi Opening" }).click();
+    await expect(lead).toHaveURL(new RegExp(`/days/${date}/opening$`));
+    await expect(lead.getByRole("link", { name: `← ${name}`, exact: true })).toHaveAttribute("href", /\?tab=days$/);
+    await waitForHydration(lead, '#notes');
+    await lead.getByLabel(/Jam kejadian/).fill("08:30");
+    await lead.locator("#notes").fill("Opening kemarin berjalan lancar.");
+    await lead.getByRole("button", { name: "Submit Opening", exact: true }).click();
+    await expect(lead).toHaveURL(new RegExp(`tab=days&submitted=.+#hari-${date}$`));
+    await expect(leadDay.getByRole("link", { name: "Tambah Opening" })).toBeVisible();
+
+    await crewDay.getByRole("link", { name: "Isi Monitoring" }).click();
+    await expect(crew).toHaveURL(new RegExp(`/days/${date}/monitoring$`));
+    await waitForHydration(crew, '#notes');
+    await crew.getByLabel(/Jam kejadian/).fill("14:00");
+    await crew.locator("#notes").fill("Monitoring kemarin selesai.");
+    await crew.getByRole("button", { name: "Submit Monitoring", exact: true }).click();
+    await expect(crew).toHaveURL(new RegExp(`tab=days&submitted=.+#hari-${date}$`));
+
+    await page.goto(`${project}?tab=days`);
+    const assignment = page.locator("form").filter({ has: page.getByLabel(`Petugas ${date}`) });
+    await assignment.getByLabel(`Petugas ${date}`).selectOption("usr-crew");
+    await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.ok()),
+      assignment.getByRole("button", { name: "Set", exact: true }).click(),
+    ]);
+    await crew.goto(`${project}?tab=days`);
+    await expect(crewDay.getByRole("link", { name: "Tambah Opening" })).toBeVisible();
+    await expect(crewDay.getByRole("link", { name: "Isi Closing" })).toBeVisible();
+  } finally {
+    await leadContext.close();
+    await crewContext.close();
+  }
 });
 
 test("Admin can require project numbers while existing unnumbered projects stay editable", async ({ browser, page }) => {

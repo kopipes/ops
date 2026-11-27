@@ -295,15 +295,18 @@ export default async function ProjectDetailPage({
         <section>
           <ul className="flex flex-col gap-2">
             {days.map((d) => {
-              const rows = dayReports.filter((r) => r.projectDayId === d.id);
-              const hasOpening = rows.some((r) => r.phase === "opening" && r.status === "submitted");
-              const hasClosing = rows.some((r) => r.phase === "closing" && r.status === "submitted");
-              const monitoring = rows.filter((r) => r.phase === "monitoring" && r.status === "submitted")
-                .length;
+              const rows = dayReports.filter((r) => r.projectDayId === d.id && r.status === "submitted");
+              const hasOpening = rows.some((r) => r.phase === "opening");
+              const hasClosing = rows.some((r) => r.phase === "closing");
+              const monitoring = rows.filter((r) => r.phase === "monitoring").length;
+              const fillablePhases = d.date < today
+                ? PHASES.filter((phase) => canSubmitPhase(session.user, facts, phase, d.assignedUserId))
+                : [];
               return (
                 <li
                   key={d.id}
-                  className="rounded-xl border px-4 py-3"
+                  id={`hari-${d.date}`}
+                  className="scroll-mt-20 rounded-xl border px-4 py-3"
                   style={{
                     borderColor: "var(--border)",
                     background: "var(--surface)",
@@ -331,6 +334,21 @@ export default async function ProjectDetailPage({
                       Lihat laporan
                     </Link>
                   </div>
+
+                  {fillablePhases.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {fillablePhases.map((phase) => (
+                        <Link
+                          key={phase}
+                          href={`/projects/${id}/days/${d.date}/${phase}`}
+                          prefetch={false}
+                          className="inline-flex min-h-10 items-center rounded-lg border border-[var(--border)] px-2 text-sm font-medium text-[var(--accent)]"
+                        >
+                          {rows.some((r) => r.phase === phase) ? "Tambah" : "Isi"} {phaseLabel[phase]}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {canManage ? (
                     <div className="mt-2 flex flex-wrap gap-2">

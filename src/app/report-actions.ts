@@ -1,6 +1,6 @@
 "use server";
 
-import { zonedToUtc } from "@/lib/datetime";
+import { toLocalDate, zonedToUtc } from "@/lib/datetime";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getEditableReport } from "@/server/services/report-edits";
@@ -79,9 +79,6 @@ export async function submitReportAction(
     return { error: "Catatan observasi wajib diisi untuk laporan monitoring." };
   }
 
-  const observedAtRaw = Number(formData.get("observedAt"));
-  const observedAt = Number.isFinite(observedAtRaw) && observedAtRaw > 0 ? observedAtRaw : Date.now();
-
   const lat = String(formData.get("latitude") ?? "").trim();
   const lng = String(formData.get("longitude") ?? "").trim();
   const accRaw = Number(formData.get("locationAccuracyM"));
@@ -96,16 +93,13 @@ export async function submitReportAction(
     const db = getDb();
     const raw = getRawDb();
 
-    const selectedTime=String(formData.get("observedTime")??"");
-    let eventAt=observedAt;
-    if(!selectedTime)return {error:"Jam kejadian wajib diisi"};
-    if(selectedTime) {
-      if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime))return {error:"Jam kejadian tidak valid"};
-      const project=db.select({timezone:projects.timezone}).from(projects).where(eq(projects.id,projectId)).get();
-      const day=db.select({date:projectDays.date,projectId:projectDays.projectId}).from(projectDays).where(eq(projectDays.id,projectDayId)).get();
-      if(!project||!day||day.projectId!==projectId)return {error:"Hari project tidak valid"};
-      eventAt=zonedToUtc(day.date,selectedTime,project.timezone);
-    }
+    const selectedTime = String(formData.get("observedTime") ?? "");
+    if (!selectedTime) return { error: "Jam kejadian wajib diisi" };
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(selectedTime)) return { error: "Jam kejadian tidak valid" };
+    const project = db.select({ timezone: projects.timezone }).from(projects).where(eq(projects.id, projectId)).get();
+    const day = db.select({ date: projectDays.date, projectId: projectDays.projectId })
+      .from(projectDays).where(eq(projectDays.id, projectDayId)).get();
+    if (!project || !day || day.projectId !== projectId) return { error: "Hari project tidak valid" };
     const outcome = await submitReport(db, raw, session.user, {
       projectId,
       projectDayId,
@@ -114,7 +108,7 @@ export async function submitReportAction(
       checklistVersion,
       notes: notes === "" ? null : notes,
       phaseNote,
-      observedAt:eventAt,
+      observedAt: zonedToUtc(day.date, selectedTime, project.timezone),
       results: parseResults(formData),
       photoIds: formData.getAll("generalPhotos").map(String).filter(Boolean),
       handoverNote: phase === "closing" ? (handoverNote ?? "") : undefined,
@@ -126,16 +120,13 @@ export async function submitReportAction(
     if (!outcome.ok) return { error: outcome.message };
 
     revalidatePath("/", "layout");
-    // Land back on the project day page so the crew sees the result.
-    const project = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .get();
+    const isToday = day.date === toLocalDate(Date.now(), project.timezone);
+    const target = isToday ? "today" : "days";
+    const anchor = isToday ? "" : `#hari-${day.date}`;
 
     return {
       ok: true,
-      redirectTo: project ? `/projects/${project.id}?tab=today&submitted=${outcome.reportId}` : "/",
+      redirectTo: `/projects/${projectId}?tab=${target}&submitted=${outcome.reportId}${anchor}`,
     };
   } catch (err) {
     return toError(err);

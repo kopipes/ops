@@ -8,7 +8,7 @@ import { isReportOnlyProjectMember } from "@/server/permissions";
 import { checklistEditVersion } from "@/server/services/project-checklist-editor";
 import { loadDayPageContext } from "@/server/services/day-context";
 import { listPhaseReports, type Phase } from "@/server/services/reports";
-import { formatReportTimestamp } from "@/lib/datetime";
+import { formatReportTimestamp, toLocalDate } from "@/lib/datetime";
 import { submitReportAction } from "@/app/report-actions";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -43,6 +43,7 @@ export async function CrewReportPage({
 
   const history = await listPhaseReports(db, ctx.day.id, phase);
   const readOnly = !ctx.canSubmit;
+  const returnTab = date === toLocalDate(Date.now(), ctx.project.timezone) ? "today" : "days";
 
   let readOnlyReason: string | undefined;
   if (!ctx.canSubmit) {
@@ -60,7 +61,7 @@ export async function CrewReportPage({
       <div className="lg:max-w-3xl">
       <header className="mb-4">
         <Link
-          href={`/projects/${projectId}?tab=today`}
+          href={`/projects/${projectId}?tab=${returnTab}`}
           className="text-xs"
           style={{ color: "var(--muted)" }}
         >
